@@ -10,7 +10,9 @@
    from a fixed set of classes. Border-color is never overridden per role —
    every dot uses the shared `--map-dot-border` — except the deliberate
    "disabled/de-emphasized" look (`.map-dot-home-site`, `.map-dot-disabled`),
-   which intentionally uses its own `--map-dot-disabled-border` instead.
+   which intentionally uses its own `--map-dot-disabled-border` instead, and
+   `.map-dot-ratio`, which uses a fainter `--map-dot-ratio-border` so the
+   border doesn't outshine the computed heatmap fill color.
    Each marker div otherwise gets exactly three classes:
 
      1. `.map-dot`            — shared border chrome (every map)
@@ -24,6 +26,11 @@
   --map-dot-fill: rgba(var(--brand-rgb), 0.8);
   --map-dot-special: rgba(var(--accent-rgb), 0.6);
   --map-dot-border: rgba(255, 255, 255, 0.9); /* white with low opacity, so the dot's fill color shows through */
+
+  /* MapVisCanvas.tsx's match-ratio "heatmap" dots (`.map-dot-ratio`) — a
+     fainter border than --map-dot-border so it doesn't outline-outshine the
+     computed fill color at high density. */
+  --map-dot-ratio-border: rgba(255, 255, 255, 0.4);
 
   --map-dot-disabled-fill: rgba(62, 62, 62, 0.14);
   --map-dot-disabled-border: rgba(41, 41, 41, 0.2);
@@ -256,6 +263,7 @@
    `--map-dot-border` as every other role. */
 .map-dot-ratio {
   background: var(--dot-fill);
+  border-color: var(--map-dot-ratio-border);
 }
 
 /* MapVisCanvas.tsx: a point where the active filter (coin type or mint) has

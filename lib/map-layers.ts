@@ -384,7 +384,11 @@ export function buildBaseLayers(L: LeafletNS) {
     maxNativeZoom: 11,
   })
 
-  const satellite = L.tileLayer(
+  // Every remaining basemap below also uses L.tileLayer.fallback (see the
+  // cawm comment above) — any blank/missing tile from these providers falls
+  // back to the enclosing lower-zoom tile, scaled up, instead of a blank
+  // square.
+  const satellite = L.tileLayer.fallback(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     {
       attribution:
@@ -398,7 +402,7 @@ export function buildBaseLayers(L: LeafletNS) {
   // The hillshaded terrain (cawm) and satellite layers above remain as
   // alternatives via the layer switcher on the dedicated Map Visualizations
   // pages.
-  const cyclosm = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', {
+  const cyclosm = L.tileLayer.fallback('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', {
     attribution:
       'Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.cyclosm.org">CyclOSM</a> hosted by <a href="https://openstreetmap.fr">OpenStreetMap France</a>',
     maxZoom: 20,
@@ -408,7 +412,7 @@ export function buildBaseLayers(L: LeafletNS) {
   // cycling-oriented styling pushes roads and paths forward; this is the
   // standard rendering, for reading present-day place names and admin
   // boundaries straight.
-  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  const osm = L.tileLayer.fallback('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution:
       'Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19,
@@ -419,7 +423,7 @@ export function buildBaseLayers(L: LeafletNS) {
   // distance off roads/cities inside China (same caveat as any GCJ basemap
   // under Leaflet's default CRS). Still useful for reading present-day
   // Chinese place names next to CyclOSM/OSM.
-  const amap = L.tileLayer(
+  const amap = L.tileLayer.fallback(
     'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
     {
       subdomains: ['1', '2', '3', '4'],

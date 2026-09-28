@@ -585,8 +585,9 @@ function applyHeatMarkerStyle(
    * its own log scoring). Density / no-data branches still win over it. */
   sizePx: number | null = null,
   cluster: MarkerClusterLike | null = null,
-  /** Overview (no filter): cluster. Active filter in Points: individual map
-   * dots. Density / Compare: none (other layers own the canvas). */
+  /** Overview (no filter): cluster. Active filter in Points, or Density:
+   * individual map dots (Density draws its own gray dots alongside the heat
+   * layer). Compare: none (compareMarkers owns the canvas instead). */
   host: 'cluster' | 'map' | 'none' = 'cluster'
 ) {
   if (hidden) {
@@ -796,7 +797,7 @@ export function MapVisCanvas(props: MapVisCanvasProps) {
       const wantCluster = props.kind === 'sites' && viewMode === 'points' && !filterActive
       const markerHost: 'cluster' | 'map' | 'none' = wantCluster
         ? 'cluster'
-        : viewMode === 'points'
+        : viewMode === 'points' || viewMode === 'density'
           ? 'map'
           : 'none'
       const sizeRange = dotSizeRange()

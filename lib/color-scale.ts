@@ -131,10 +131,10 @@ export function ratioToColor(ratio: number): string {
 // heat layer in the app (MapVisCanvas.tsx's density view mode) — one
 // definition so retinting/opacity changes apply everywhere at once.
 export const DENSITY_GRADIENT_STOPS: [number, string][] = [
-  [0, '#f0d56a'],
-  [0.25, '#e39a2b'],
-  [0.5, '#d04a1c'],
-  [0.75, '#a01515'],
+  [0.15, '#f0d56a'],
+  [0.4, '#e39a2b'],
+  [0.65, '#d04a1c'],
+  [0.85, '#a01515'],
   [1, '#6e0c0c'],
 ]
 
@@ -195,10 +195,20 @@ export function densityLegendCss(): string {
 }
 
 /**
- * leaflet.heat options shared by every density overlay. `maxZoom: 0` keeps
- * the per-point scale factor `v` at 1 at every map zoom — the plugin
- * otherwise multiplies intensity by 1/2^(maxZoom − zoom), which faded the
- * layer when zoomed out and made each zoom level look different.
+ * leaflet.heat options shared by every density overlay. `radius` is in fixed
+ * screen pixels, so at low zoom (viewing all of China) far more real-world
+ * sites collapse into the same on-screen radius than at regional zoom —
+ * their stamps overlap and compound toward solid red regardless of how faint
+ * any single site's own intensity is. `maxZoom: 11` leans on the plugin's
+ * built-in `1/2^(maxZoom − zoom)` per-point scale-down to counter exactly
+ * that: below zoom 11 each point contributes less, which thins out the
+ * whole-China default view (zoom 4-6) from one solid red mass into real
+ * gradation, while genuinely dense clusters still accumulate enough overlap
+ * to read as hot — verified at zoom 4/6 (Find Site) and zoom 6 (Mint Town,
+ * its default). Full intensity returns from zoom 11 in. (A previous
+ * `maxZoom: 0` disabled this entirely for zoom-to-zoom consistency, but that
+ * consistency meant the zoomed-out view inherited the same saturation as a
+ * dense zoomed-in hotspot.)
  */
 export function densityHeatLayerOptions(): {
   radius: number
@@ -211,7 +221,7 @@ export function densityHeatLayerOptions(): {
   return {
     radius: 32,
     blur: 26,
-    maxZoom: 0,
+    maxZoom: 11,
     max: 1,
     minOpacity: 0.35,
     gradient: buildDensityGradient(readHeatmapOpacity()),
