@@ -10,16 +10,27 @@ const RESULT_LIMIT = 20
  * this is safe to call without the service-role client; it's still routed
  * through a dev-gated 'use server' wrapper (target-search-action.ts) for a
  * uniform "nothing under lib/admin ever runs in prod" mental model. */
+/** Escapes a value for interpolation into a PostgREST .or() filter string,
+ * where `,`, `.`, `(`, `)` are syntax (e.g. a comma in the search text would
+ * otherwise be read as a separate filter clause). Backslash-escaping the
+ * value and wrapping it in double quotes makes PostgREST treat it literally. */
+function toOrFilterPattern(raw: string): string {
+  const escaped = raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  return `"%${escaped}%"`
+}
+
 export async function searchTargets(targetType: TargetType, query: string): Promise<ComboOption[]> {
-  const q = `%${query.trim()}%`
-  if (!query.trim()) return []
+  const trimmed = query.trim()
+  if (!trimmed) return []
+  const q = `%${trimmed}%`
+  const orQ = toOrFilterPattern(trimmed)
 
   switch (targetType) {
     case 'site': {
       const { data, error } = await supabase
         .from('sites')
         .select('site_code, site_name_zh')
-        .or(`site_code.ilike.${q},site_name_zh.ilike.${q}`)
+        .or(`site_code.ilike.${orQ},site_name_zh.ilike.${orQ}`)
         .limit(RESULT_LIMIT)
       if (error) throw error
       return (data ?? []).map((r) => ({ value: r.site_code, label: `${r.site_code} · ${r.site_name_zh ?? ''}` }))
@@ -28,7 +39,7 @@ export async function searchTargets(targetType: TargetType, query: string): Prom
       const { data, error } = await supabase
         .from('contexts')
         .select('context_code, context_name_zh')
-        .or(`context_code.ilike.${q},context_name_zh.ilike.${q}`)
+        .or(`context_code.ilike.${orQ},context_name_zh.ilike.${orQ}`)
         .limit(RESULT_LIMIT)
       if (error) throw error
       return (data ?? []).map((r) => ({
@@ -45,7 +56,7 @@ export async function searchTargets(targetType: TargetType, query: string): Prom
       const { data, error } = await supabase
         .from('coin_items')
         .select('coin_item_code, description_zh')
-        .or(`coin_item_code.ilike.${q},description_zh.ilike.${q}`)
+        .or(`coin_item_code.ilike.${orQ},description_zh.ilike.${orQ}`)
         .limit(RESULT_LIMIT)
       if (error) throw error
       return (data ?? []).map((r) => ({
@@ -60,7 +71,7 @@ export async function searchTargets(targetType: TargetType, query: string): Prom
       const { data, error } = await supabase
         .from('mints')
         .select('mint_code, name_zh, name_en')
-        .or(`mint_code.ilike.${q},name_zh.ilike.${q},name_en.ilike.${q}`)
+        .or(`mint_code.ilike.${orQ},name_zh.ilike.${orQ},name_en.ilike.${orQ}`)
         .limit(RESULT_LIMIT)
       if (error) throw error
       return (data ?? []).map((r) => ({
