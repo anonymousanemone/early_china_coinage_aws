@@ -27,7 +27,7 @@ export async function updateCoinIssue(
 
   if (error) return { ok: false, formError: error.message }
 
-  revalidatePath('/coin-types/[slug]', 'page')
+  revalidatePath('/coin-types/[type_code]', 'page')
   revalidatePath('/coin-types')
   return { ok: true, data: flattenCoinIssue(data as CoinIssueEmbed), message: 'Saved.' }
 }

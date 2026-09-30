@@ -50,6 +50,7 @@ import {
 } from '@/lib/mint-filter'
 import {
   ansCollectionUrl,
+  buildAnsHierarchyRows,
   buildAnsInscriptionSource,
   buildAnsTypologyMintCounts,
   computeAnsMintStats,
@@ -1398,18 +1399,18 @@ function MuseumMapOverlay({
  * in lib/mint-stats.ts for how the two data sources diverge under
  * the hood while sharing this same rendering. Its Search tab
  * (AccessionNumberSearch) looks up specimens by accession number instead.
+ * Reads only from `specimens` (v_ans_flat) plus `mints` (for geographic
+ * coordinates/mint_code, which v_ans_flat doesn't carry) — the type-filter
+ * catalog is synthesized from `specimens` itself (buildAnsHierarchyRows), no
+ * separate getCoinTypeHierarchy() fetch needed.
  */
 export function AnsMintTownVisualization({
   specimens,
-  coinIssues,
-  hierarchyRows,
   mints,
   initialViewMode,
   initialTypeSelections,
 }: {
   specimens: AnsSpecimen[]
-  coinIssues: CoinIssueDisplay[]
-  hierarchyRows: CoinTypeHierarchyRow[]
   mints: MintInfo[]
   /** Pre-built filter state for a deep link — see FindSpotsVisualization's
    * matching props. */
@@ -1422,11 +1423,18 @@ export function AnsMintTownVisualization({
   const [showNoData, setShowNoData] = useState(true)
   const [showMinorRivers, setShowMinorRivers] = useState(false)
   const [showRoutes, setShowRoutes] = useState(false)
+  // Synthetic coin_type_hierarchy rows scoped to this museum's own
+  // specimens — see buildAnsHierarchyRows' doc comment for why this reads
+  // no better from a real getCoinTypeHierarchy() fetch.
+  const hierarchyRows = useMemo(() => buildAnsHierarchyRows(specimens), [specimens])
   // Scopes the inscription filter (dropdown options + its count) to
   // inscriptions actually present among these specimens, instead of every
   // inscription in the sitewide coin_issues catalog — see
   // buildAnsInscriptionSource's doc comment.
-  const inscriptionSource = useMemo(() => buildAnsInscriptionSource(specimens, coinIssues), [specimens, coinIssues])
+  const inscriptionSource = useMemo(
+    () => buildAnsInscriptionSource(specimens, hierarchyRows),
+    [specimens, hierarchyRows]
+  )
   const {
     staged: stagedType,
     setStaged: setStagedType,
@@ -1439,8 +1447,8 @@ export function AnsMintTownVisualization({
   } = useTypologyMultiSelect(inscriptionSource, hierarchyRows, initialTypeSelections)
 
   const typeOptionCounts = useMemo(
-    () => buildAnsTypologyMintCounts(specimens, hierarchyRows, stagedType),
-    [specimens, hierarchyRows, stagedType]
+    () => buildAnsTypologyMintCounts(specimens, stagedType),
+    [specimens, stagedType]
   )
   // Order of selection (not of `specimens`) so each pick keeps its color
   // slot as later picks are added/removed around it. Keyed by ans_data.id —
@@ -1493,8 +1501,8 @@ export function AnsMintTownVisualization({
   )
 
   const matchedSpecimens = useMemo(
-    () => getMatchingAnsSpecimensMulti(specimens, hierarchyRows, typeEntries),
-    [specimens, hierarchyRows, typeEntries]
+    () => getMatchingAnsSpecimensMulti(specimens, typeEntries),
+    [specimens, typeEntries]
   )
 
   const totalStats = useMemo(() => computeAnsMintStats(specimens, mints), [specimens, mints])
@@ -1563,8 +1571,8 @@ export function AnsMintTownVisualization({
   // selected types shows up twice here.
   const mintTypeQuantities = useMemo(() => {
     if (viewMode !== 'compare') return new Map<string, Map<string, number>>()
-    return computeAnsMintTypeQuantities(specimens, hierarchyRows, typeEntries)
-  }, [viewMode, specimens, hierarchyRows, typeEntries])
+    return computeAnsMintTypeQuantities(specimens, typeEntries)
+  }, [viewMode, specimens, typeEntries])
 
   const comparePoints = useMemo<ComparePoint[]>(() => {
     if (viewMode !== 'compare') return []
@@ -1618,7 +1626,6 @@ export function AnsMintTownVisualization({
           <AccessionNumberSearch
             specimens={specimens}
             mints={mints}
-            inscriptionSource={inscriptionSource}
             selectedKeys={selectedKeys}
             selectedSpecimens={selectedSpecimens}
             onToggle={toggleSelected}

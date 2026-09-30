@@ -3,7 +3,6 @@ import { splitCsv } from '@/lib/format'
 import { toMintInfo } from '@/lib/mint-directory'
 import { findQuantity } from '@/lib/quantity'
 import { supabase } from '@/lib/supabase'
-import { matchHierarchyForLegacyType, parseLegacyTypeTokens } from '@/lib/typology-filter'
 import type {
   CoinIssueDisplay,
   CoinTypeHierarchyRow,
@@ -22,7 +21,7 @@ import type {
 } from '@/lib/types'
 
 const MAP_SITE_FIELDS =
-  'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, location_detail_zh, location_detail_en, lat, lng, precision_level, site_type_zh, site_type_en, find_record_count, total_quantity_for_map, level1_types_zh, level2_types_zh, level3_types_zh, level4_types_zh, level5_types_zh, level1_types_en, level2_types_en, level3_types_en, level4_types_en, level5_types_en, inscriptions, states_zh, mints_zh, inscriptions_en, states_en, mints_en'
+  'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, lat, lng, precision_level, site_type_zh, site_type_en, find_record_count, total_quantity_for_map, level1_types_zh, level2_types_zh, level3_types_zh, level4_types_zh, level5_types_zh, level1_types_en, level2_types_en, level3_types_en, level4_types_en, level5_types_en, inscriptions, states_zh, mints_zh, inscriptions_en, states_en, mints_en'
 
 export type SearchSite = MapSite & {
   period_zh: string | null
@@ -97,7 +96,6 @@ export type CoinIssueEmbed = {
   state_id: string | null
   inscription_id: string | null
   coin_type_hierarchy_id: string | null
-  legacy_type?: string | null
   legacy_inscription?: string | null
   legacy_mint?: string | null
   legacy_state?: string | null
@@ -111,47 +109,20 @@ export type CoinIssueEmbed = {
 }
 
 export const COIN_ISSUE_FIELDS =
-  'id, coin_type_code, description_zh, description_en, mint_id, state_id, inscription_id, coin_type_hierarchy_id, legacy_type, legacy_inscription, legacy_mint, legacy_state, mints(name_zh, name_en), states(state_zh, state_en), inscriptions(inscription_zh, inscription_en), coin_type_hierarchy(level1_zh, level1_en, level2_zh, level2_en, level3_zh, level3_en, level4_zh, level4_en, level5_zh, level5_en)'
+  'id, coin_type_code, description_zh, description_en, mint_id, state_id, inscription_id, coin_type_hierarchy_id, legacy_inscription, legacy_mint, legacy_state, mints(name_zh, name_en), states(state_zh, state_en), inscriptions(inscription_zh, inscription_en), coin_type_hierarchy(level1_zh, level1_en, level2_zh, level2_en, level3_zh, level3_en, level4_zh, level4_en, level5_zh, level5_en)'
 
 type LegacyTypeFields = {
-  legacy_type?: string | null
   legacy_inscription?: string | null
   legacy_mint?: string | null
   legacy_state?: string | null
 }
 
-/** When coin_type_hierarchy_id is null, resolve type text from legacy_type
- * against the live hierarchy (and fall back to the raw tokens if no row
- * matches) so finds that only have coin_issues_id still display and filter. */
-function applyLegacyHierarchy(
-  issue: CoinIssueDisplay,
-  legacy: LegacyTypeFields | null | undefined,
-  hierarchyRows?: CoinTypeHierarchyRow[]
-): CoinIssueDisplay {
-  if (issue.coin_type_hierarchy_id && issue.major_type_zh) {
-    return {
-      ...issue,
-      inscription: issue.inscription ?? legacy?.legacy_inscription ?? null,
-      mint_zh: issue.mint_zh ?? legacy?.legacy_mint ?? null,
-      state_zh: issue.state_zh ?? legacy?.legacy_state ?? null,
-    }
-  }
-
-  const matched =
-    !issue.coin_type_hierarchy_id && hierarchyRows?.length
-      ? matchHierarchyForLegacyType(legacy?.legacy_type, hierarchyRows)
-      : null
-  const derived = matched ? deriveMajorMinor(matched) : { major_zh: null, major_en: null, minor_zh: null, minor_en: null }
-  const tokens = parseLegacyTypeTokens(legacy?.legacy_type)
+/** Some coin_issues rows have inscription/mint/state text recorded in the
+ * legacy_* free-text columns but never matched to a row in the inscriptions/
+ * mints/states lookup tables, so the FK-joined fields come back null. */
+function applyLegacyText(issue: CoinIssueDisplay, legacy: LegacyTypeFields | null | undefined): CoinIssueDisplay {
   return {
     ...issue,
-    coin_type_hierarchy_id: issue.coin_type_hierarchy_id ?? matched?.id ?? null,
-    major_type_zh: issue.major_type_zh ?? derived.major_zh ?? tokens[0] ?? null,
-    major_type_en: issue.major_type_en ?? derived.major_en ?? null,
-    minor_type_zh: issue.minor_type_zh ?? derived.minor_zh ?? tokens[1] ?? null,
-    minor_type_en: issue.minor_type_en ?? derived.minor_en ?? null,
-    level2_zh: issue.level2_zh ?? matched?.level2_zh ?? tokens[0] ?? null,
-    level2_en: issue.level2_en ?? matched?.level2_en ?? null,
     inscription: issue.inscription ?? legacy?.legacy_inscription ?? null,
     mint_zh: issue.mint_zh ?? legacy?.legacy_mint ?? null,
     state_zh: issue.state_zh ?? legacy?.legacy_state ?? null,
@@ -160,15 +131,16 @@ function applyLegacyHierarchy(
 
 /** Flattens a joined coin_issues row into the same flat zh/en text shape the
  * old coin_types table provided, plus the FK ids for match-logic callers
- * (see lib/typology-filter.ts, lib/mint-filter.ts). Pass `hierarchyRows` so
- * issues with a null coin_type_hierarchy_id still resolve via legacy_type. */
-export function flattenCoinIssue(row: CoinIssueEmbed, hierarchyRows?: CoinTypeHierarchyRow[]): CoinIssueDisplay {
+ * (see lib/typology-filter.ts, lib/mint-filter.ts). A null
+ * coin_type_hierarchy_id means the issue has no type — its major/minor/level2
+ * fields stay null rather than being resolved from legacy_type. */
+export function flattenCoinIssue(row: CoinIssueEmbed): CoinIssueDisplay {
   const cth = one(row.coin_type_hierarchy)
   const { major_zh, major_en, minor_zh, minor_en } = deriveMajorMinor(cth)
   const mint = one(row.mints)
   const state = one(row.states)
   const inscription = one(row.inscriptions)
-  return applyLegacyHierarchy(
+  return applyLegacyText(
     {
       id: row.id,
       coin_type_code: row.coin_type_code,
@@ -191,8 +163,7 @@ export function flattenCoinIssue(row: CoinIssueEmbed, hierarchyRows?: CoinTypeHi
       inscription_id: row.inscription_id,
       coin_type_hierarchy_id: row.coin_type_hierarchy_id,
     },
-    row,
-    hierarchyRows
+    row
   )
 }
 
@@ -355,8 +326,8 @@ function siteHasTypeCsv(site: MapSite): boolean {
 }
 
 /** Sites whose map-view type CSVs are empty (typically finds that only have
- * coin_issues_id, whose issue has no coin_type_hierarchy_id) get those
- * columns rebuilt from finds → coin_issues → hierarchy/legacy_type. */
+ * coin_issues_id) get those columns rebuilt from finds → coin_issues →
+ * hierarchy. */
 async function fillMissingMapSiteTypes(sites: MapSite[]): Promise<MapSite[]> {
   const missing = sites.filter((site) => (site.find_record_count ?? 0) > 0 && !siteHasTypeCsv(site))
   if (missing.length === 0) return sites
@@ -371,7 +342,7 @@ async function fillMissingMapSiteTypes(sites: MapSite[]): Promise<MapSite[]> {
     ),
     getCoinTypeHierarchy(),
   ])
-  const issueById = new Map(issueRows.map((row) => [row.id, flattenCoinIssue(row, hierarchyRows)]))
+  const issueById = new Map(issueRows.map((row) => [row.id, flattenCoinIssue(row)]))
   const extraBySite = new Map<string, CoinIssueDisplay[]>()
   finds.forEach((find) => {
     if (!find.site_code || !find.coin_issues_id) return
@@ -509,8 +480,6 @@ type SitePrecisionRow = {
   city_en: string | null
   county_zh: string | null
   county_en: string | null
-  location_detail_zh: string | null
-  location_detail_en: string | null
   lat: number | null
   lng: number | null
   precision_level: number | null
@@ -529,8 +498,6 @@ function siteRowToMapSite(row: SitePrecisionRow): MapSite {
     city_en: row.city_en,
     county_zh: row.county_zh,
     county_en: row.county_en,
-    location_detail_zh: row.location_detail_zh,
-    location_detail_en: row.location_detail_en,
     lat: row.lat,
     lng: row.lng,
     precision_level: row.precision_level,
@@ -564,7 +531,7 @@ async function getPrecisionSupplementSites(): Promise<MapSite[]> {
       supabase
         .from('sites')
         .select(
-          'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, location_detail_zh, location_detail_en, lat, lng, precision_level, site_type_zh, site_type_en'
+          'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, lat, lng, precision_level, site_type_zh, site_type_en'
         )
         .ilike('site_name_zh', '%不明单位%')
         .order('site_code')
@@ -574,7 +541,7 @@ async function getPrecisionSupplementSites(): Promise<MapSite[]> {
       supabase
         .from('sites')
         .select(
-          'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, location_detail_zh, location_detail_en, lat, lng, precision_level, site_type_zh, site_type_en'
+          'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, lat, lng, precision_level, site_type_zh, site_type_en'
         )
         .eq('county_zh', '不明')
         .order('site_code')
@@ -608,16 +575,36 @@ export async function getFindSpotsMapSites(): Promise<MapSite[]> {
   return fillMissingMapSiteTypes(mergeMapSites(mapped, supplements))
 }
 
-/** Sums `total_quantity_for_map` across every row, paginating past PostgREST's 1000-row cap. */
-async function sumTotalQuantityForMap(): Promise<number> {
-  const rows = await fetchAllPages<{ total_quantity_for_map: number | null }>((from, to) =>
-    supabase
-      .from('v_coin_map_sites')
-      .select('site_code, total_quantity_for_map')
-      .order('site_code')
-      .range(from, to)
-  )
-  return rows.reduce((sum, row) => sum + (row.total_quantity_for_map ?? 0), 0)
+/**
+ * Scoped counterpart to getFindSpotsMapSites -- `.in('site_code', ...)` on
+ * v_coin_map_sites, falling back to plain `sites` (same precision-tagged
+ * cases getPrecisionSupplementSites patches in) for any code the view
+ * excludes, instead of paging the whole map-sites table plus its supplement
+ * fetches just to find a handful of already-known sites. Deliberately skips
+ * fillMissingMapSiteTypes -- that only backfills the type-CSV columns, which
+ * a caller that already knows its exact site codes (e.g. the coin-type
+ * detail page's Related Finds table, which only reads name/province/
+ * quantity) never needs.
+ */
+export async function getMapSitesByCodes(siteCodes: string[]): Promise<MapSite[]> {
+  if (siteCodes.length === 0) return []
+
+  const { data, error } = await supabase.from('v_coin_map_sites').select(MAP_SITE_FIELDS).in('site_code', siteCodes)
+  if (error) throw error
+
+  const found = new Set((data ?? []).map((s) => s.site_code))
+  const missing = siteCodes.filter((code) => !found.has(code))
+  if (missing.length === 0) return data ?? []
+
+  const { data: fallback, error: fallbackError } = await supabase
+    .from('sites')
+    .select(
+      'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, lat, lng, precision_level, site_type_zh, site_type_en'
+    )
+    .in('site_code', missing)
+  if (fallbackError) throw fallbackError
+
+  return [...(data ?? []), ...(fallback ?? []).map(siteRowToMapSite)]
 }
 
 export async function getAllSites(): Promise<SearchSite[]> {
@@ -632,16 +619,16 @@ export async function getAllSites(): Promise<SearchSite[]> {
 }
 
 export async function getDatabaseStats(): Promise<DatabaseStats> {
-  const [{ count: siteCount }, { count: findCount }, totalCoins] = await Promise.all([
+  const [{ count: siteCount }, { count: findCount }, { data: totalCoins }] = await Promise.all([
     supabase.from('v_coin_map_sites').select('*', { count: 'exact', head: true }),
     supabase.from('finds').select('*', { count: 'exact', head: true }),
-    sumTotalQuantityForMap(),
+    supabase.rpc('sum_total_quantity_for_map'),
   ])
 
   return {
     siteCount: siteCount ?? 0,
     findCount: findCount ?? 0,
-    totalCoins,
+    totalCoins: totalCoins ?? 0,
   }
 }
 
@@ -681,10 +668,7 @@ export async function getSiteContexts(siteCode: string): Promise<Context[]> {
   return (data ?? []).map(flattenPeriod)
 }
 
-export async function getSiteFinds(
-  contextCodes: string[],
-  hierarchyRows?: CoinTypeHierarchyRow[]
-): Promise<Find[]> {
+export async function getSiteFinds(contextCodes: string[]): Promise<Find[]> {
   if (contextCodes.length === 0) return []
 
   const { data, error } = await supabase
@@ -697,19 +681,11 @@ export async function getSiteFinds(
   const rows = (data ?? []) as Array<
     Omit<Find, 'coin_issues'> & { coin_issues: CoinIssueEmbed | CoinIssueEmbed[] | null }
   >
-  const needsLegacy =
-    !hierarchyRows &&
-    rows.some((row) => {
-      const coinIssue = one(row.coin_issues)
-      return !!coinIssue && !coinIssue.coin_type_hierarchy_id
-    })
-  const hierarchy = needsLegacy ? await getCoinTypeHierarchy() : hierarchyRows
-
   return rows.map((row) => {
     const coinIssue = one(row.coin_issues)
     return {
       ...row,
-      coin_issues: coinIssue ? flattenCoinIssue(coinIssue, hierarchy) : null,
+      coin_issues: coinIssue ? flattenCoinIssue(coinIssue) : null,
     }
   })
 }
@@ -734,8 +710,9 @@ export async function getSources(sourceCodes: string[]): Promise<Source[]> {
  *    can't be expressed as a single SQL OR clause against v_coin_map_sites.
  */
 /** Pure filter used by /search — keeps network IO in the page so sites +
- * coinIssues are fetched once (searchSites used to re-fetch both, which
- * could push Vercel hobby's ~10s function limit and make /search hang). */
+ * coinIssues are fetched once. A previous `searchSites()` helper re-fetched
+ * both internally, which could push Vercel hobby's ~10s function limit and
+ * make /search hang; it had no callers and was removed. */
 export function filterSitesByQuery(
   sites: SearchSite[],
   coinIssues: CoinIssueDisplay[],
@@ -802,60 +779,67 @@ export function filterSitesByQuery(
   })
 }
 
-export async function searchSites(query: string): Promise<SearchSite[]> {
-  const trimmed = query.trim()
-  if (!trimmed) return []
-  const [sites, coinIssues] = await Promise.all([getAllSites(), getCoinIssues()])
-  return filterSitesByQuery(sites, coinIssues, trimmed)
-}
-
 /** Reads the flattened, pre-joined `v_coin_issues_flat` view (mints/states/
  * inscriptions/coin_type_hierarchy already joined and major/minor derived in
  * SQL) instead of embedding + flattenCoinIssue-ing coin_issues by hand — same
- * CoinIssueDisplay shape, no client-side join. Issues whose hierarchy FK is
- * still null are then filled from legacy_type so map filters and search pies
- * see the same types as finds that still have deprecated_coin_type_code. */
+ * CoinIssueDisplay shape, no client-side join. A row with a null hierarchy FK
+ * simply has no type. */
 export async function getCoinIssues(): Promise<CoinIssueDisplay[]> {
-  const rows = await fetchAllPages<CoinIssueDisplay>((from, to) =>
+  return fetchAllPages<CoinIssueDisplay>((from, to) =>
     supabase.from('v_coin_issues_flat').select('*').order('coin_type_code').range(from, to)
   )
-  const incomplete = rows.filter((row) => !row.coin_type_hierarchy_id)
-  if (incomplete.length === 0) return rows
-
-  const ids = incomplete.map((row) => row.id)
-  const [legacyRows, hierarchyRows] = await Promise.all([
-    fetchAllPages<
-      { id: string } & Required<
-        Pick<LegacyTypeFields, 'legacy_type' | 'legacy_inscription' | 'legacy_mint' | 'legacy_state'>
-      >
-    >((from, to) =>
-      supabase
-        .from('coin_issues')
-        .select('id, legacy_type, legacy_inscription, legacy_mint, legacy_state')
-        .in('id', ids)
-        .order('id')
-        .range(from, to)
-    ),
-    getCoinTypeHierarchy(),
-  ])
-  const legacyById = new Map(legacyRows.map((row) => [row.id, row]))
-  return rows.map((row) => {
-    if (row.coin_type_hierarchy_id) return row
-    return applyLegacyHierarchy(row, legacyById.get(row.id) ?? null, hierarchyRows)
-  })
 }
 
-export async function getCoinTypeHierarchy(): Promise<CoinTypeHierarchyRow[]> {
+/** Scoped counterpart to getCoinIssues -- `.in('coin_type_hierarchy_id', ...)`
+ * on the same view, instead of paging the whole ~2,279-row catalog just to
+ * find one coin-type node's own issues (the /coin-types/[type_code] Coin
+ * Issues table, and its states/mints/inscriptions dedup lists). */
+export async function getCoinIssuesByHierarchyIds(hierarchyIds: string[]): Promise<CoinIssueDisplay[]> {
+  if (hierarchyIds.length === 0) return []
+  return fetchAllPages<CoinIssueDisplay>((from, to) =>
+    supabase
+      .from('v_coin_issues_flat')
+      .select('*')
+      .in('coin_type_hierarchy_id', hierarchyIds)
+      .order('coin_type_code')
+      .range(from, to)
+  )
+}
+
+/** Wrapped in React's cache() so app/coin-types/[type_code]/page.tsx's
+ * generateMetadata and the page component — both called for the same
+ * request — share one fetch instead of two (same pattern as getSite). */
+export const getCoinTypeHierarchy = cache(async function getCoinTypeHierarchy(): Promise<CoinTypeHierarchyRow[]> {
   return fetchAllPages<CoinTypeHierarchyRow>((from, to) =>
     supabase
       .from('coin_type_hierarchy')
       .select(
-        'id, level1_zh, level1_en, level2_zh, level2_en, level3_zh, level3_en, level4_zh, level4_en, level5_zh, level5_en, img_acc_num, description_zh, description_en'
+        'id, level1_zh, level1_en, level2_zh, level2_en, level3_zh, level3_en, level4_zh, level4_en, level5_zh, level5_en, img_acc_num, description_zh, description_en, type_code'
       )
       .order('level2_zh')
       .range(from, to)
   )
-}
+})
+
+/** Single hierarchy row by its URL slug — same scoped `.eq(...).maybeSingle()`
+ * pattern as getSite/getMintByCode, instead of paging every hierarchy row
+ * just to find one via a recomputed-slug match. Wrapped in cache() so
+ * generateMetadata and generateStaticParams' single-row needs (none today,
+ * but future callers) share a fetch the same way getCoinTypeHierarchy does. */
+export const getCoinTypeByCode = cache(async function getCoinTypeByCode(
+  typeCode: string
+): Promise<CoinTypeHierarchyRow | null> {
+  const { data, error } = await supabase
+    .from('coin_type_hierarchy')
+    .select(
+      'id, level1_zh, level1_en, level2_zh, level2_en, level3_zh, level3_en, level4_zh, level4_en, level5_zh, level5_en, img_acc_num, description_zh, description_en, type_code'
+    )
+    .eq('type_code', typeCode)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+})
 
 // ── sources / source_links ──────────────────────────────────────────────
 
@@ -952,6 +936,21 @@ export async function getImages(): Promise<ImageRecord[]> {
   )
 }
 
+/** Same columns as getImages, scoped to specific ids (e.g. a single mint's
+ * image_ids) instead of paging the whole images table. */
+export async function getImagesByIds(ids: string[]): Promise<ImageRecord[]> {
+  if (ids.length === 0) return []
+  const { data, error } = await supabase
+    .from('images')
+    .select(
+      'id, filename, source_id, source_text, caption_zh, caption_en, note_zh, note_en, sources(citation_zh, citation_en, url)'
+    )
+    .in('id', ids)
+
+  if (error) throw error
+  return data ?? []
+}
+
 export type MintRow = {
   id: string
   name_zh: string
@@ -990,6 +989,47 @@ export async function getMints(): Promise<MintRow[]> {
  * `mints` row + nested `states` join. */
 export async function getMintInfos(): Promise<MintInfo[]> {
   return (await getMints()).map(toMintInfo)
+}
+
+/** Single mint by its URL slug — same scoped `.eq(...).maybeSingle()` pattern
+ * as getSite, instead of paging all `mints` rows just to find one via `.find()`. */
+export async function getMintByCode(mintCode: string): Promise<MintRow | null> {
+  const { data, error } = await supabase
+    .from('mints')
+    .select(
+      'id, name_zh, name_en, precision_level, latitude, longitude, description_zh, description_en, citation, modern_location_zh, modern_location_en, location_note, state_id, states(state_zh, state_en), image_ids, sources_unlinked, mint_code, alternative_names'
+    )
+    .eq('mint_code', mintCode)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
+/** Minimal shape of a v_coin_finds row scoped to one coin-type node's
+ * subtree -- just enough to compute a node's coin/site counts.
+ * quantity_for_map is already coalesced server-side
+ * (quantity_total ?? quantity_estimated ?? quantity_min ?? 1), same
+ * convention v_coin_map_sites's total_quantity_for_map uses. */
+export type CoinTypeFind = {
+  site_code: string | null
+  quantity_for_map: number
+}
+
+/** Scoped counterpart to getFindsForHeatmap -- v_coin_finds already joins
+ * finds out to coin_type_hierarchy server-side (coin_type_id), so this can
+ * scope directly by hierarchy id without first fetching coin_issues to
+ * derive an issue-id list the way a raw `finds` query would need to. */
+export async function getCoinFindsByHierarchyIds(hierarchyIds: string[]): Promise<CoinTypeFind[]> {
+  if (hierarchyIds.length === 0) return []
+  return fetchAllPages<CoinTypeFind>((from, to) =>
+    supabase
+      .from('v_coin_finds')
+      .select('site_code, quantity_for_map')
+      .in('coin_type_id', hierarchyIds)
+      .order('find_code')
+      .range(from, to)
+  )
 }
 
 export async function getFindsForHeatmap(): Promise<HeatmapFind[]> {

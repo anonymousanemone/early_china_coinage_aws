@@ -1,7 +1,7 @@
 import { FullViewportMapShell } from '@/components/visualizations/FullViewportMapShell'
 import { AnsMintTownVisualization } from '@/components/visualizations/MapVisualization'
 import { getAnsSpecimens } from '@/lib/ans-museum-data'
-import { getCoinIssues, getCoinTypeHierarchy, getMintInfos } from '@/lib/queries'
+import { getMintInfos } from '@/lib/queries'
 import { parseCommonDeeplinkParams } from '@/lib/visualization-deeplink'
 
 type PageProps = {
@@ -18,22 +18,11 @@ export const revalidate = 86400
 export default async function MuseumCollectionsPage({ searchParams }: PageProps) {
   const { view, types } = await searchParams
 
-  const [specimens, coinIssues, hierarchyRows, mints] = await Promise.all([
-    getAnsSpecimens(),
-    getCoinIssues(),
-    getCoinTypeHierarchy(),
-    getMintInfos(),
-  ])
+  const [specimens, mints] = await Promise.all([getAnsSpecimens(), getMintInfos()])
 
   return (
     <FullViewportMapShell>
-      <AnsMintTownVisualization
-        specimens={specimens}
-        coinIssues={coinIssues}
-        hierarchyRows={hierarchyRows}
-        mints={mints}
-        {...parseCommonDeeplinkParams(view, types)}
-      />
+      <AnsMintTownVisualization specimens={specimens} mints={mints} {...parseCommonDeeplinkParams(view, types)} />
     </FullViewportMapShell>
   )
 }
