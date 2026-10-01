@@ -16,7 +16,7 @@ Every list-fetching helper in `lib/queries.ts` pages through PostgREST with `fet
 
 **The `isAuthorized()`-forces-dynamic-render bug is fixed** (see `todo.md`'s status update for how): `/coin-types/[type_code]`, `/mints`, `/mints/[mint_code]`, `/sites/[site_code]`, and `/sources` each split into a public page (never calls `cookies()`, ISR-eligible) and a sibling `/edit` route that does the auth check and renders the same shared content component with `authorized` flipped on. The public pages are the ones documented below; the `/edit` siblings aren't listed separately since they run identical queries, just gated behind a redirect-if-unauthorized.
 
-**The `searchParams`-breaks-caching bug is still open** on 3 of its original 4 pages: `/visualizations/find-site`, `/visualizations/mint-town`, `/museum-collections` (todo.md Q5a/Q5b) — all three still read `searchParams` server-side for zero server-side filtering benefit, an identified free fix that hasn't been applied yet. `/search` is the one page that's supposed to stay dynamic (it does real server-side filtering).
+**The `searchParams`-breaks-caching bug is fixed** on `/visualizations/find-site`, `/visualizations/mint-town`, `/museum-collections` (todo.md Q5a/Q5b): the pages no longer read `searchParams`. The visualization components decode their deep-link params client-side with `useSearchParams()`, and each page wraps them in `<Suspense>` (required for `useSearchParams` on a static route). `next build` now reports all three as `○ (Static)`, 1d revalidate. `/search` is the one page that's supposed to stay dynamic (it does real server-side filtering).
 
 ---
 
@@ -35,13 +35,13 @@ Every list-fetching helper in `lib/queries.ts` pages through PostgREST with `fet
 ## `/search` — `app/search/page.tsx`
 
 - **Queries:** Unchanged from the last audit.
-  - `getAllSites()` → `v_coin_map_sites` (all 1,797 geocoded rows) **+** `getPrecisionSupplementSites()` (~39 county-level rows) **+** `attachSiteDetails()` (all `sites` rows for `description_zh/en` + joined `periods`) — still two independent full `sites`-family scans.
+  - `getAllSites()` → `v_coin_map_sites` (all 1,797 geocoded rows, now including `description_zh/en` + `period_zh/en`) **+** `getPrecisionSupplementSites()` (~39 county-level rows, which also carry description/period). One full scan; `attachSiteDetails()`'s second full `sites` pass is gone.
   - `getCoinIssues()` → `v_coin_issues_flat`, all 2,279 rows.
   - `getFindsForSiteCodes(pageResults)` → scoped to the 20 sites on the current results page.
 - **Filtering:** All text search, facet filtering, sorting, and pagination still happen in memory in the page component (`filterSitesByQuery()`, `lib/search-filters.ts`), not in SQL.
 - **Rendering:** Declared Static/ISR (`revalidate = 86400`, `maxDuration = 60`), but reads `searchParams` for every filter/sort/page value — still dynamic per unique query string, by design (this is the one page that legitimately needs it).
 - **Auth impact:** None on data returned.
-- **⚠️ todo.md:** `getAllSites()`'s double `sites` scan (main `v_coin_map_sites` fetch + `attachSiteDetails()`'s independent second pass) is still unfixed — see backlog. The CSV/JSON-snapshot idea (Q5d) for this page is also still just a proposal, not built.
+- **⚠️ todo.md:** `getAllSites()`'s double `sites` scan is **fixed**: `scripts/add-v-coin-map-sites-details.sql` (applied 2026-10-01) appends `description_zh/en` + `period_zh/en` to `v_coin_map_sites`. It's a `CREATE OR REPLACE` so grants are kept, and it's verified on live data: the original 32 columns are byte-identical (same md5 over all 1,797 rows) and the new columns match `sites`/`periods` on every row. Other view consumers select `MAP_SITE_FIELDS` explicitly, so their payloads are unchanged.
 
 ## `/coin-types` — `app/coin-types/page.tsx`
 
@@ -67,11 +67,11 @@ Route param renamed from `[slug]` to `[type_code]` since the last audit — `coi
 
 ## `/mints` — `app/mints/page.tsx` (content in `components/mints/MintsPageContent.tsx`)
 
-- **Queries:** `getMints()` (126, + joined `states`) + `getMintStats()` (`v_mint_stats`, 126 pre-aggregated rows — one per mint) + `getCoinIssues()` (all 2,279) + `getImages()` (all 28, joined to `sources`). **No longer calls `getFindsForHeatmap()`** — the full 6,975-row `finds` pull is gone.
-- **Used for:** the mint-town overview map preview and the full searchable mint directory list (stats, coin-type tags, issue counts, completeness score). Per-mint find/coin/site counts and inscriptions come straight from `v_mint_stats` (via `computeMintStatsFromView`); coin-type tags and issue counts are still computed in memory from `getCoinIssues()`.
+- **Queries:** `getMints()` (126, + joined `states`) + `getMintStats()` (`v_mint_stats`, 126 pre-aggregated rows — one per mint) + `getImages()` (all 28, joined to `sources`). **No longer calls `getFindsForHeatmap()` or `getCoinIssues()`** — the full 6,975-row `finds` and 2,279-row `v_coin_issues_flat` pulls are both gone.
+- **Used for:** the mint-town overview map preview and the full searchable mint directory list (stats, coin-type tags, issue counts, completeness score). Per-mint find/coin/site counts, inscriptions, catalogued issue counts, and bilingual coin-type tags all come straight from `v_mint_stats` (stats via `computeMintStatsFromView`); only the completeness score is still computed in memory, from the `mints` rows.
 - **Rendering:** **Static/ISR** (`revalidate = 86400`). The public page never calls `isAuthorized()` — that lives in `/mints/edit`, a separate route rendering the same `MintsPageContent` with `authorized` on.
 - **Auth impact:** None on the public route; `/mints/edit` only changes whether `<AddMintSection>` renders, no extra queries.
-- **⚠️ todo.md Q1/Q2/Q3:** **`v_mint_stats` is applied** (`scripts/add-mint-stats-view.sql`, live as of 2026-10-01) and wired in. The draft had to be corrected before running — it referenced a `coin_issues.inscription` column that no longer exists (now `inscription_id` → `inscriptions`), collected inscriptions from every catalogued issue rather than only issues with finds, and left-joined `contexts` where `getFindsForHeatmap()` inner-joins. The corrected view was checked against the old JS path (`computeMintStatsFromFinds`) on live data: deep-equal output for all 126 mints. Remaining on this page: `getCoinIssues()` (2,279) is still pulled in full just for `typesByMint`/`issuesByMint` — foldable into the view later (port `buildMintTypeLabels`' dedup rule) if it's worth it.
+- **⚠️ todo.md Q1/Q2/Q3:** **`v_mint_stats` is applied** (`scripts/add-mint-stats-view.sql`, live as of 2026-10-01) and wired in. The draft had to be corrected before running — it referenced a `coin_issues.inscription` column that no longer exists (now `inscription_id` → `inscriptions`), collected inscriptions from every catalogued issue rather than only issues with finds, and left-joined `contexts` where `getFindsForHeatmap()` inner-joins. The corrected view was checked against the old JS path (`computeMintStatsFromFinds`) on live data: deep-equal output for all 126 mints. `issue_count` and `type_labels` were then folded into the same view (replacing `buildMintTypeLabels`, now removed), again verified deep-equal against the old JS output, so the page no longer needs `getCoinIssues()` at all. Nothing left open on this page.
 
 ## `/mints/[mint_code]` — `app/mints/[mint_code]/page.tsx` (content in `components/mints/MintDetailContent.tsx`)
 
@@ -89,14 +89,14 @@ Route param renamed from `[slug]` to `[type_code]` since the last audit — `coi
 
 - **Queries:** `getAnsSpecimens()` → now reads `v_ans_flat` (all 2,947 rows) instead of joining `ans_data` to `mints`/`states` client-side — todo.md's Q5-response spec (id, catalogue number, hierarchy levels 1–5 zh/en, inscription zh/en, mint zh/en, state zh/en) is implemented exactly as specced in `scripts/add-ans-flat-view.sql`. Plus `getMintInfos()` (126).
 - **Used for:** the ANS mint-town map visualization and its accession-number search, entirely client-rendered from this one payload.
-- **Rendering:** Static/ISR, `revalidate = 86400`. `searchParams` (`view`, `types`) are read only to set initial client-side state — same caching-limbo case as before, unfixed.
+- **Rendering:** Static/ISR, `revalidate = 86400`. `view`/`types` deep-link params are now read client-side (`useSearchParams`), so the page is genuinely static.
 - **Auth impact:** None.
-- **⚠️ todo.md:** the view removed the client-side join code (and the `getCoinIssues()` fetch this page used to make just for inscription labels) but **does not by itself reduce row count/egress** — full `ans_data`/`v_ans_flat` is still shipped to the client for entirely in-browser aggregation and search. The scoped-fetch/snapshot follow-up (Q5d) and the `searchParams` caching fix are both still open.
+- **⚠️ todo.md:** the view removed the client-side join code (and the `getCoinIssues()` fetch this page used to make just for inscription labels) but **does not by itself reduce row count/egress** — full `ans_data`/`v_ans_flat` is still shipped to the client for entirely in-browser aggregation and search. The `searchParams` caching fix is done.
 
 ## `/sites/[site_code]` — `app/sites/[site_code]/page.tsx` (content in `components/site/SiteDetailContent.tsx`)
 
 - **Queries (unchanged from the last audit):** `getSite` → `getSiteMapSummary` → `getSiteContexts` → `getSiteFinds(contextCodes)` → `getMintInfos()` (126, full) → **admin-only** `getCoinIssues()` (2,279, full) + unconditional `getCoinTypeHierarchy()` (72) → `getSourceLinksForSite(...)`. Every finds/contexts/sources query here is already properly `.eq`/`.in`-scoped; the one full-table read (`getCoinIssues()`) backs an admin edit dropdown that legitimately needs every option.
-- **Rendering:** **Static/ISR now** for the public route (`revalidate = 86400`, deliberately **no** `generateStaticParams` — the page's own comment explains why: ~1,830 sites × up to 9 sequential queries each would mean 16,000+ DB round trips per build/revalidation, so a requested site still renders per-request on first hit, just without the auth-check overhead or the anonymous-visitor `coinIssues` fetch). Editing moved to `/sites/[site_code]/edit`.
+- **Rendering:** **Static/ISR (on first visit).** Was dynamic and uncached despite `revalidate = 86400` (verified 2026-10-01 against `next build` + `next start`: `ƒ` in the build output, every request `Cache-Control: private, no-store`, ~1.6s each). In the App Router a dynamic segment with no `generateStaticParams` is treated as dynamic, even with no `cookies()`/`searchParams`. The page comment's worry (~1,830 sites × ~9 queries at build) only applies to prerendering every site. `generateStaticParams() { return [] }` prerenders nothing at build but caches each site on first visit: tested as `●` in the build, first request `MISS` (2.2s), then `HIT` (0.05s), unknown codes still 404. Admin site edits already call `revalidatePath('/sites/[site_code]', 'page')`, so edits still show. **Applied 2026-10-01.** Editing moved to `/sites/[site_code]/edit`.
 - **Auth impact:** `/edit` adds the `getCoinIssues()` full-catalog query for the find-editing combobox, and renders the raw "Site Record (dev only)" panel.
 - **⚠️ todo.md Q6:** the caching-bug fix (edit-route split) is applied. Row-scoping was already close to ideal here and remains so — no change needed or made.
 
@@ -106,7 +106,7 @@ Route param renamed from `[slug]` to `[type_code]` since the last audit — `coi
 - **Used for:** the full searchable/filterable source bibliography; search and filtering are client-side over this one fetched set.
 - **Rendering:** **Static/ISR now** (`revalidate = 86400`). Editing moved to `/sources/edit`, which does the `isAuthorized()` check.
 - **Auth impact:** None on the public route; `/edit` only gates whether inline add/edit controls render.
-- **⚠️ Still not covered by a specific todo.md fix** — no aggregation/scoping candidate has been identified for this page's full `sources`+`source_links` reads. The caching-bug half is now fixed (edit-route split); the row-scoping half is an open item, same as before.
+- **Deprioritized, not fixing:** no aggregation/scoping candidate exists for the full `sources`+`source_links` reads, but none is needed. The page is very rarely viewed and rarely edited, and with ISR plus `revalidatePath('/sources')` in the admin actions, the full reads run at most once per day with traffic — ISR only rebuilds on a visit, never on a timer, and an edit's `revalidatePath` also just defers the rebuild to the next visit.
 
 ## `/visualizations` — `app/visualizations/page.tsx`
 
@@ -116,14 +116,14 @@ Route param renamed from `[slug]` to `[type_code]` since the last audit — `coi
 ## `/visualizations/find-site` — `app/visualizations/find-site/page.tsx`
 
 - **Queries:** `getFindSpotsMapSites()` (`v_coin_map_sites` 1,797 + precision supplements) + `getCoinIssues()` (2,279) + `getCoinTypeHierarchy()` (72) + `getFindsForHeatmap()` (all 6,975) + `getMintInfos()` (126) — unchanged.
-- **Filtering:** Only `precision` is filtered server-side; `mode`/`mints`/`types`/`view` are decoded and passed straight through as props, filtered entirely client-side.
-- **Rendering:** Declared Static/ISR (`revalidate = 86400`) but reads `searchParams`, so still dynamic per unique query string — **unfixed**.
-- **⚠️ todo.md Q5a/Q5b:** the identified **free fix** (decode `mode`/`mints`/`types`/`view` client-side instead of reading them server-side, since there's no server-side filtering benefit) has not been applied. Still open, still the lowest-risk item on the backlog.
+- **Filtering:** All client-side. `precision` was the one server-side filter; it's now applied in `FindSpotsVisualization` over the full site list (the default "all" tab already shipped every site, so the payload doesn't grow). `mode`/`mints`/`types`/`view` are decoded client-side too.
+- **Rendering:** Static/ISR (`revalidate = 86400`). The page doesn't read `searchParams`.
+- **⚠️ todo.md Q5a/Q5b:** the free fix is **applied**.
 
 ## `/visualizations/mint-town` — `app/visualizations/mint-town/page.tsx`
 
 - **Queries:** `getCoinIssues()` (2,279) + `getCoinTypeHierarchy()` (72) + `getFindsForHeatmap()` (all 6,975) + `getMintInfos()` (126) — unchanged.
-- **Rendering:** Static/ISR (`revalidate = 86400`); `view`/`types` searchParams still read server-side for initial client state only — **unfixed**, same free fix available as `/visualizations/find-site`.
+- **Rendering:** Static/ISR (`revalidate = 86400`); `view`/`types` deep-link params are read client-side, same fix as `/visualizations/find-site`.
 
 ## `/login` — `app/login/page.tsx`
 
@@ -147,7 +147,7 @@ Route param renamed from `[slug]` to `[type_code]` since the last audit — `coi
 - **Three Postgres views now do the heavy joining/aggregating that pages would otherwise do client-side:** `v_coin_map_sites` (aggregating — count/sum/string_agg per site, rewritten in `scripts/remake-v-coin-finds.sql` to join straight off `sites`/`contexts`/`finds` rather than the old wide `v_coin_finds`), `v_coin_issues_flat` (flattening — coin_issues pre-joined to mints/states/inscriptions/hierarchy), and `v_coin_finds` (flattening, **rewritten from a wide 8-way-join view that was confirmed unused, into a slim per-find view — `find_code`, codes, and `(id, zh, en)` triples for coin type/inscription/state/mint plus `quantity_for_map` — that's now the backing source for `getCoinFindsByHierarchyIds`,** the scoped-finds query powering `/coin-types/[type_code]`). All three views' `CREATE VIEW` source is checked into `scripts/`, closing the "no source-of-truth in git" gap the last audit flagged for `v_coin_map_sites`/`v_coin_finds`.
 - **The `isAuthorized()`-forces-dynamic-render bug is fixed** across all 5 pages it used to hit, via the `/edit`-route split pattern (see each page's section above and todo.md's status update for the mechanics). It no longer multiplies any of this doc's other egress numbers by "once per visit" — those pages are back to "once per 24h" (or once per build, for the three with `generateStaticParams`).
 - **The "legacy hierarchy" fallback** (`applyLegacyHierarchy` in `lib/queries.ts`) still adds a conditional extra query wherever a row's `coin_type_hierarchy_id` is null. Migration-transition path, not steady-state cost.
-- **Two resilience fallbacks still degrade rather than fail:** `attachSiteDetails()` and `getFindsForSiteCodes()`, unchanged.
+- **One resilience fallback still degrades rather than fails:** `getFindsForSiteCodes()`, unchanged. (`attachSiteDetails()` and its fallback were removed along with the second `sites` scan.)
 - **Auth's effect on data remains narrow:** it only ever adds `getStates()`/`getInscriptions()` (on `/coin-types/[type_code]/edit`) or `getCoinIssues()` (on `/sites/[site_code]/edit`) for admin edit UI, plus a couple of dev-only debug panels. It no longer has any *indirect* caching effect, since it's confined to the `/edit` routes that were never meant to be cached in the first place.
 
 ---
@@ -161,10 +161,14 @@ Resolved since the last pass:
 4. ✅ `v_ans_flat` applied and wired into `getAnsSpecimens()`.
 5. ✅ `CREATE VIEW` source committed for `v_coin_map_sites`/`v_coin_finds`, and `v_coin_finds` rewritten from unused/wide into actively-used/slim.
 6. ✅ Home page (`/`) no longer queries `getCoinIssues()` for its showcase photos — hardcoded instead.
-7. ✅ `v_mint_stats` applied and wired into `/mints` — the page no longer pulls the full `finds` table.
+7. ✅ `v_mint_stats` applied and wired into `/mints` — the page no longer pulls the full `finds` table or `coin_issues` catalogue.
 
-Still open, ranked by estimated impact:
-1. **Un-break caching on `/visualizations/mint-town`, `/visualizations/find-site`, `/museum-collections`** — free fix, no server-side filtering to preserve.
-2. **Dedupe `getAllSites()`'s two independent full `sites` scans** on `/search`.
-3. **Big decision, not a patch:** CSV/JSON snapshot architecture for `/search`, and possibly `/museum-collections` — needs a staleness answer first (bifurcate on `authorized`, webhook, or nightly cron).
-4. **`/sources`** — no scoping/aggregation candidate identified yet for its full `sources`+`source_links` reads; worth its own pass, starting with profiling `resolveSourceLinkTargets`'s actual query count.
+8. ✅ Caching un-broken on `/visualizations/mint-town`, `/visualizations/find-site`, `/museum-collections` — deep-link params decoded client-side.
+9. ✅ `getAllSites()`'s second full `sites` scan removed — description/period now come from `v_coin_map_sites`.
+
+10. ✅ `/sites/[site_code]` now actually cached — `generateStaticParams() { return [] }` (see that page's entry).
+
+Still open: nothing.
+
+Deprioritized:
+- **`/sources`** full `sources`+`source_links` reads — rarely viewed, rarely edited, and ISR-cached, so the reads are rare; not worth a scoping pass.

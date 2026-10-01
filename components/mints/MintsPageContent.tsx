@@ -4,9 +4,9 @@ import { MintListClient } from '@/components/mints/MintListClient'
 import { MapOverviewCard } from '@/components/home/MapOverviewCard'
 import { MapVisCanvas } from '@/components/map/MapVisCanvas'
 import { T } from '@/components/i18n/T'
-import { buildMintDirectory, buildMintTypeLabels, mintCompleteness, toMintInfo } from '@/lib/mint-directory'
+import { buildMintDirectory, mintCompleteness, toMintInfo, type MintTypeLabel } from '@/lib/mint-directory'
 import { computeMintStatsFromView, toMintPoints } from '@/lib/mint-stats'
-import { getCoinIssues, getImages, getMintStats, getMints } from '@/lib/queries'
+import { getImages, getMintStats, getMints } from '@/lib/queries'
 
 /**
  * Shared render body for `/mints` (public, `authorized` always false so this
@@ -17,12 +17,7 @@ export async function MintsPageContent({ authorized }: { authorized: boolean }) 
   // Same points list the Mint Town map visualization shows by default (no
   // filter, no ANS toggle) — v_mint_stats aggregates the same numbers
   // computeMintStatsFromFinds would, without pulling the full finds table.
-  const [dbMints, mintStatsRows, coinIssues, images] = await Promise.all([
-    getMints(),
-    getMintStats(),
-    getCoinIssues(),
-    getImages(),
-  ])
+  const [dbMints, mintStatsRows, images] = await Promise.all([getMints(), getMintStats(), getImages()])
   const mints = buildMintDirectory(dbMints, images)
 
   const { mapped, unmapped } = computeMintStatsFromView(mintStatsRows, dbMints.map(toMintInfo))
@@ -37,18 +32,22 @@ export async function MintsPageContent({ authorized }: { authorized: boolean }) 
     statsByMint[stat.mint_zh] = { coinCount: stat.coinCount, siteCount: stat.siteCount }
   })
 
-  // Bilingual coin-type tags per mint, computed live from coin_issues (see
-  // buildMintTypeLabels' doc comment).
-  const typesByMint = Object.fromEntries(buildMintTypeLabels(coinIssues))
-
-  // Distinct catalogued coin_issues per mint (the "Number of issues" sort
-  // option) — different from statsByMint's coinCount/siteCount, which are
-  // derived from `finds`, not from the coin_issues catalogue itself.
+  // Bilingual coin-type tags per mint (v_mint_stats.type_labels: the deepest
+  // populated hierarchy level, minor falling back to major) and distinct
+  // catalogued coin_issues per mint (the "Number of issues" sort option) —
+  // the latter different from statsByMint's coinCount/siteCount, which are
+  // derived from `finds`, not from the coin_issues catalogue itself. Only
+  // mints with at least one issue get an entry.
+  const nameZhById = new Map(dbMints.map((m) => [m.id, m.name_zh]))
+  const typesByMint: Record<string, MintTypeLabel[]> = {}
   const issuesByMint: Record<string, number> = {}
-  coinIssues.forEach((c) => {
-    const mintZh = c.mint_zh?.trim()
-    if (!mintZh) return
-    issuesByMint[mintZh] = (issuesByMint[mintZh] ?? 0) + 1
+  mintStatsRows.forEach((row) => {
+    const mintZh = nameZhById.get(row.mint_id)
+    if (!mintZh || row.issue_count === 0) return
+    issuesByMint[mintZh] = row.issue_count
+    if (row.type_labels.length > 0) {
+      typesByMint[mintZh] = [...row.type_labels].sort((a, b) => a.zh.localeCompare(b.zh, 'zh-CN'))
+    }
   })
 
   // "Completion of information" sort option — how many of a mint's

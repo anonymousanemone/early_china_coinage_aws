@@ -1,6 +1,6 @@
 import { cache } from 'react'
 import { splitCsv } from '@/lib/format'
-import { toMintInfo } from '@/lib/mint-directory'
+import { toMintInfo, type MintTypeLabel } from '@/lib/mint-directory'
 import { findQuantity } from '@/lib/quantity'
 import { supabase } from '@/lib/supabase'
 import type {
@@ -23,13 +23,15 @@ import type {
 const MAP_SITE_FIELDS =
   'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, lat, lng, precision_level, site_type_zh, site_type_en, find_record_count, total_quantity_for_map, level1_types_zh, level2_types_zh, level3_types_zh, level4_types_zh, level5_types_zh, level1_types_en, level2_types_en, level3_types_en, level4_types_en, level5_types_en, inscriptions, states_zh, mints_zh, inscriptions_en, states_en, mints_en'
 
+// /search-only columns on v_coin_map_sites (scripts/add-v-coin-map-sites-details.sql),
+// kept out of MAP_SITE_FIELDS so the map pages' payloads don't carry them.
+const SEARCH_SITE_FIELDS = `${MAP_SITE_FIELDS}, description_zh, description_en, period_zh, period_en`
+
 export type SearchSite = MapSite & {
   period_zh: string | null
   period_en: string | null
   // Carried along for /search's "interest" sort (lib/search-filters.ts),
-  // which rewards a site that has a description — not exposed on the
-  // v_coin_map_sites view MapSite otherwise comes from, so this is
-  // fetched from `sites` alongside period in attachSiteDetails below.
+  // which rewards a site that has a description.
   description_zh: string | null
   description_en: string | null
 }
@@ -283,7 +285,7 @@ function bucketsToTypeFields(buckets: ReturnType<typeof emptyTypeBuckets>): MapS
   }
 }
 
-function unionMapSiteTypeFields(site: MapSite, extra: MapSiteTypeFields): MapSite {
+function unionMapSiteTypeFields<T extends MapSite>(site: T, extra: MapSiteTypeFields): T {
   return {
     ...site,
     level1_types_zh: unionCsv(site.level1_types_zh, extra.level1_types_zh),
@@ -328,7 +330,7 @@ function siteHasTypeCsv(site: MapSite): boolean {
 /** Sites whose map-view type CSVs are empty (typically finds that only have
  * coin_issues_id) get those columns rebuilt from finds → coin_issues →
  * hierarchy. */
-async function fillMissingMapSiteTypes(sites: MapSite[]): Promise<MapSite[]> {
+async function fillMissingMapSiteTypes<T extends MapSite>(sites: T[]): Promise<T[]> {
   const missing = sites.filter((site) => (site.find_record_count ?? 0) > 0 && !siteHasTypeCsv(site))
   if (missing.length === 0) return sites
 
@@ -407,53 +409,6 @@ export function flattenPeriod(row: any) {
   return { ...rest, period_zh: period?.period_zh ?? null, period_en: period?.period_en ?? null }
 }
 
-async function attachSiteDetails(sites: MapSite[]): Promise<SearchSite[]> {
-  try {
-    // Paginate — sites exceed PostgREST's default 1000-row cap, and a single
-    // unpaginated select silently dropped periods for later rows. Bundles
-    // description alongside period (rather than a second query) since both
-    // come off the same `sites` row keyed by the same site_code.
-    const data = await fetchAllPages<{
-      site_code: string
-      description_zh: string | null
-      description_en: string | null
-      periods:
-        | { period_zh: string | null; period_en: string | null }
-        | { period_zh: string | null; period_en: string | null }[]
-        | null
-    }>((from, to) =>
-      supabase
-        .from('sites')
-        .select('site_code, description_zh, description_en, periods(period_zh, period_en)')
-        .order('site_code')
-        .range(from, to)
-    )
-
-    const detailsBySiteCode = new Map(data.map((row) => [row.site_code, flattenPeriod(row)]))
-    return sites.map((site) => {
-      const details = detailsBySiteCode.get(site.site_code)
-      return {
-        ...site,
-        period_zh: details?.period_zh ?? null,
-        period_en: details?.period_en ?? null,
-        description_zh: details?.description_zh ?? null,
-        description_en: details?.description_en ?? null,
-      }
-    })
-  } catch (err) {
-    // Don't take down /search (or any attachSiteDetails caller) if the
-    // periods embed/migration is missing — degrade to nulls instead.
-    console.error('attachSiteDetails failed; continuing without period/description labels:', err)
-    return sites.map((site) => ({
-      ...site,
-      period_zh: null,
-      period_en: null,
-      description_zh: null,
-      description_en: null,
-    }))
-  }
-}
-
 function textIncludes(value: string | null | undefined, query: string): boolean {
   return !!value && value.toLowerCase().includes(query)
 }
@@ -524,40 +479,42 @@ function siteRowToMapSite(row: SitePrecisionRow): MapSite {
   }
 }
 
-/** Sites tagged 不明单位 / county=不明 that may be missing from v_coin_map_sites. */
-async function getPrecisionSupplementSites(): Promise<MapSite[]> {
+/** Sites tagged 不明单位 / county=不明 that may be missing from v_coin_map_sites.
+ * Also carries description/period so /search's getAllSites() gets them for
+ * these rows too (only a handful aren't already in the view). */
+async function getPrecisionSupplementSites(): Promise<SearchSite[]> {
+  const fields =
+    'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, lat, lng, precision_level, site_type_zh, site_type_en, description_zh, description_en, periods(period_zh, period_en)'
+  type SupplementRow = SitePrecisionRow & {
+    description_zh: string | null
+    description_en: string | null
+    periods: PeriodEmbed
+  }
   const [nameTagged, countyTagged] = await Promise.all([
-    fetchAllPages<SitePrecisionRow>((from, to) =>
-      supabase
-        .from('sites')
-        .select(
-          'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, lat, lng, precision_level, site_type_zh, site_type_en'
-        )
-        .ilike('site_name_zh', '%不明单位%')
-        .order('site_code')
-        .range(from, to)
+    fetchAllPages<SupplementRow>((from, to) =>
+      supabase.from('sites').select(fields).ilike('site_name_zh', '%不明单位%').order('site_code').range(from, to)
     ),
-    fetchAllPages<SitePrecisionRow>((from, to) =>
-      supabase
-        .from('sites')
-        .select(
-          'site_code, site_name_zh, site_name_en, province_zh, province_en, city_zh, city_en, county_zh, county_en, lat, lng, precision_level, site_type_zh, site_type_en'
-        )
-        .eq('county_zh', '不明')
-        .order('site_code')
-        .range(from, to)
+    fetchAllPages<SupplementRow>((from, to) =>
+      supabase.from('sites').select(fields).eq('county_zh', '不明').order('site_code').range(from, to)
     ),
   ])
 
-  const byCode = new Map<string, MapSite>()
+  const byCode = new Map<string, SearchSite>()
   ;[...nameTagged, ...countyTagged].forEach((row) => {
-    byCode.set(row.site_code, siteRowToMapSite(row))
+    const { period_zh, period_en } = flattenPeriod(row)
+    byCode.set(row.site_code, {
+      ...siteRowToMapSite(row),
+      period_zh,
+      period_en,
+      description_zh: row.description_zh,
+      description_en: row.description_en,
+    })
   })
   return [...byCode.values()]
 }
 
-function mergeMapSites(base: MapSite[], extras: MapSite[]): MapSite[] {
-  const byCode = new Map<string, MapSite>()
+function mergeMapSites<T extends MapSite>(base: T[], extras: T[]): T[] {
+  const byCode = new Map<string, T>()
   base.forEach((site) => byCode.set(site.site_code, site))
   extras.forEach((site) => {
     if (!byCode.has(site.site_code)) byCode.set(site.site_code, site)
@@ -609,13 +566,12 @@ export async function getMapSitesByCodes(siteCodes: string[]): Promise<MapSite[]
 
 export async function getAllSites(): Promise<SearchSite[]> {
   const [sites, supplements] = await Promise.all([
-    fetchAllPages<MapSite>((from, to) =>
-      supabase.from('v_coin_map_sites').select(MAP_SITE_FIELDS).order('site_name_zh').range(from, to)
+    fetchAllPages<SearchSite>((from, to) =>
+      supabase.from('v_coin_map_sites').select(SEARCH_SITE_FIELDS).order('site_name_zh').range(from, to)
     ),
     getPrecisionSupplementSites(),
   ])
-  const filled = await fillMissingMapSiteTypes(mergeMapSites(sites, supplements))
-  return attachSiteDetails(filled)
+  return fillMissingMapSiteTypes(mergeMapSites(sites, supplements))
 }
 
 export async function getDatabaseStats(): Promise<DatabaseStats> {
@@ -1008,7 +964,9 @@ export async function getMintByCode(mintCode: string): Promise<MintRow | null> {
 
 /** One row per mint from v_mint_stats (scripts/add-mint-stats-view.sql) —
  * the same find/coin/site counts and inscriptions computeMintStatsFromFinds
- * builds, aggregated in Postgres instead of from the full `finds` table. */
+ * builds, plus the mint's catalogued issue count and bilingual coin-type
+ * labels, all aggregated in Postgres instead of from the full `finds` and
+ * `coin_issues` tables. type_labels is deduped by zh but unsorted. */
 export type MintStatsRow = {
   mint_id: string
   mint_code: string
@@ -1016,6 +974,8 @@ export type MintStatsRow = {
   coin_count: number
   site_count: number
   inscriptions: string[]
+  issue_count: number
+  type_labels: MintTypeLabel[]
 }
 
 export async function getMintStats(): Promise<MintStatsRow[]> {

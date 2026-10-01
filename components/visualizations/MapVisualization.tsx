@@ -15,6 +15,7 @@
  */
 
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import {
@@ -31,7 +32,12 @@ import { T } from '@/components/i18n/T'
 import { ClickHint } from '@/components/ui/ClickHint'
 import { MultiSelectSearch } from '@/components/ui/MultiSelectSearch'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
-import type { PrecisionFilter } from '@/lib/city-boundaries'
+import {
+  countSitesByPrecision,
+  parsePrecisionFilter,
+  siteMatchesPrecisionFilter,
+  type PrecisionFilter,
+} from '@/lib/city-boundaries'
 import {
   SELECTION_COLORS,
   useSelectionColors,
@@ -77,6 +83,7 @@ import {
   type TypologySelectionEntry,
 } from '@/lib/typology-filter'
 import type { CoinIssueDisplay, CoinTypeHierarchyRow, HeatmapFind, MapSite, MintInfo } from '@/lib/types'
+import { decodeMintNames, parseCommonDeeplinkParams, parseFilterMode } from '@/lib/visualization-deeplink'
 
 /* ── shared filter-panel pieces ─────────────────────────────────────────── */
 
@@ -573,37 +580,40 @@ function heatWeight(state: SiteHeatState, totalQty: number): number | null {
 }
 
 export function FindSpotsVisualization({
-  sites,
+  sites: allSites,
   coinIssues,
   hierarchyRows,
   finds,
   mints,
-  currentPrecision,
-  precisionCounts,
-  initialMode,
-  initialViewMode,
-  initialMintNames,
-  initialTypeSelections,
 }: {
+  /** Every site, unfiltered — the precision (site/county/city) filter is
+   * applied here from `?precision=`, so the page itself never reads
+   * searchParams and stays statically cached. */
   sites: MapSite[]
   coinIssues: CoinIssueDisplay[]
   hierarchyRows: CoinTypeHierarchyRow[]
   finds: HeatmapFind[]
   mints: MintInfo[]
-  /** Precision (site/county/city) links re-fetch sites server-side via
-   * searchParams, so the page filters `sites` and hands down only the
-   * current value + counts — the links themselves render here. */
-  currentPrecision: PrecisionFilter
-  precisionCounts: Record<PrecisionFilter, number>
-  /** Pre-built filter state for a deep link (e.g. the homepage demo
-   * carousel) — read once at mount, same as any other useState initializer.
-   * See lib/visualization-deeplink.ts / lib/demo-visualizations.ts. */
-  initialMode?: FilterMode
-  initialViewMode?: ViewMode
-  initialMintNames?: string[]
-  initialTypeSelections?: TypologyFilterSelection[]
 }) {
   const { t } = useLanguage()
+  // Pre-built filter state for a deep link (e.g. the homepage demo carousel)
+  // — read once at mount, same as any other useState initializer. See
+  // lib/visualization-deeplink.ts / lib/demo-visualizations.ts. Read
+  // client-side (not from the page's searchParams) so the route stays
+  // statically cached; the page wraps this component in <Suspense> for it.
+  const searchParams = useSearchParams()
+  const initialMode = parseFilterMode(searchParams.get('mode') ?? undefined)
+  const initialMintNames = decodeMintNames(searchParams.get('mints') ?? undefined)
+  const { initialViewMode, initialTypeSelections } = parseCommonDeeplinkParams(
+    searchParams.get('view') ?? undefined,
+    searchParams.get('types') ?? undefined
+  )
+  const currentPrecision: PrecisionFilter = parsePrecisionFilter(searchParams.get('precision'))
+  const precisionCounts = useMemo(() => countSitesByPrecision(allSites), [allSites])
+  const sites = useMemo(
+    () => allSites.filter((site) => siteMatchesPrecisionFilter(site, currentPrecision)),
+    [allSites, currentPrecision]
+  )
   const [mode, setMode] = useState<FilterMode>(initialMode ?? 'type')
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode ?? 'points')
   const [showNoData, setShowNoData] = useState(false)
@@ -991,19 +1001,19 @@ export function MintTownVisualization({
   coinIssues,
   hierarchyRows,
   mints,
-  initialViewMode,
-  initialTypeSelections,
 }: {
   finds: HeatmapFind[]
   coinIssues: CoinIssueDisplay[]
   hierarchyRows: CoinTypeHierarchyRow[]
   mints: MintInfo[]
-  /** Pre-built filter state for a deep link — see FindSpotsVisualization's
-   * matching props. */
-  initialViewMode?: ViewMode
-  initialTypeSelections?: TypologyFilterSelection[]
 }) {
   const { t } = useLanguage()
+  // Deep-link state read client-side — see FindSpotsVisualization.
+  const searchParams = useSearchParams()
+  const { initialViewMode, initialTypeSelections } = parseCommonDeeplinkParams(
+    searchParams.get('view') ?? undefined,
+    searchParams.get('types') ?? undefined
+  )
   // Only one data source exists today (database finds) — the toggle row is
   // kept (rather than collapsed away) so a future data source is just
   // another entry in `options` below, not a UI rebuild.
@@ -1407,17 +1417,17 @@ function MuseumMapOverlay({
 export function AnsMintTownVisualization({
   specimens,
   mints,
-  initialViewMode,
-  initialTypeSelections,
 }: {
   specimens: AnsSpecimen[]
   mints: MintInfo[]
-  /** Pre-built filter state for a deep link — see FindSpotsVisualization's
-   * matching props. */
-  initialViewMode?: ViewMode
-  initialTypeSelections?: TypologyFilterSelection[]
 }) {
   const { t } = useLanguage()
+  // Deep-link state read client-side — see FindSpotsVisualization.
+  const searchParams = useSearchParams()
+  const { initialViewMode, initialTypeSelections } = parseCommonDeeplinkParams(
+    searchParams.get('view') ?? undefined,
+    searchParams.get('types') ?? undefined
+  )
   const [tab, setTab] = useState<MuseumTab>('mint')
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode ?? 'points')
   const [showNoData, setShowNoData] = useState(true)

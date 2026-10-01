@@ -6,24 +6,25 @@ type PageProps = {
 }
 
 // Public view — never calls isAuthorized()/cookies(), so this stays
-// ISR-eligible (once a slug has been requested at least once — see below).
-// Editing lives at /sites/[site_code]/edit instead of behind an inline
-// authorized check here (see that route for why).
+// ISR-eligible. Editing lives at /sites/[site_code]/edit instead of behind
+// an inline authorized check here (see that route for why).
 //
-// Deliberately NO generateStaticParams here, unlike /coin-types/[type_code] and
-// /mints/[mint_code]: this table has ~1,830 rows, and each site's own
-// content function already issues up to ~9 sequential Supabase queries
-// (contexts, finds, sources, etc.) — prerendering all of them would turn
-// every build/24h-revalidation into ~16,000+ sequential DB round trips.
-// Without generateStaticParams, a requested site still renders per-request
-// (no Full Route Cache), same runtime cost as before minus the auth-check
-// overhead and the anonymous-visitor coinIssues fetch this split also
-// removes. If you want full ISR caching here too, it needs a deliberate
-// call given that build-time cost — ask before adding it wholesale; a
-// partial generateStaticParams (e.g. only sites with find records) is a
-// middle ground worth considering instead of all 1,830.
+// generateStaticParams returns [] on purpose: unlike /coin-types/[type_code]
+// and /mints/[mint_code], nothing is prerendered at build — this table has
+// ~1,830 rows, and each site's content issues up to ~9 sequential Supabase
+// queries, so prerendering all of them would cost ~16,000+ DB round trips
+// per build. But the export itself is required: without generateStaticParams
+// the App Router treats this dynamic segment as fully dynamic (`ƒ`, every
+// request `no-store`, verified with next build + next start). With [], each
+// site renders on its first visit and is then served from the Full Route
+// Cache for `revalidate`; unknown codes still 404. Admin edits already call
+// revalidatePath('/sites/[site_code]', 'page'), so they show up immediately.
 
 export const revalidate = 86400
+
+export function generateStaticParams() {
+  return []
+}
 
 export async function generateMetadata({ params }: PageProps) {
   const { site_code } = await params
