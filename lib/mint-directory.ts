@@ -10,7 +10,7 @@ const MODERN_LOCATION_FALLBACK = 'See description / 见描述'
 
 /** Resolves a public.images row to the shape MintImageGallery renders —
  * `filename` is stored relative to public/images/, so the actual asset path
- * is `./images/${filename}`. `source_id` and `source_text` are mutually
+ * is `/images/${filename}`. `source_id` and `source_text` are mutually
  * exclusive at the DB level (see the images table's check constraint), so
  * exactly one of the catalogued source's citation or the one-off
  * source_text supplies the credit line, if either is set. */
@@ -18,7 +18,7 @@ function imageRecordToMintImage(img: ImageRecord): MintImage {
   const source = Array.isArray(img.sources) ? img.sources[0] : img.sources
   const sourceCredit = source?.citation_en ?? source?.citation_zh ?? source?.url ?? undefined
   return {
-    src: `./images/${img.filename}`,
+    src: `/images/${img.filename}`,
     caption: img.caption_en ?? img.caption_zh ?? undefined,
     credit: img.source_text ?? sourceCredit ?? undefined,
     kind: img.note_zh === '铭文材料' ? 'inscription' : 'map',

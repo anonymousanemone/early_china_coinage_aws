@@ -39,14 +39,14 @@ const TEAM_MEMBERS: TeamMember[] = [
     title: '',
     affiliation: 'Ph.D Candidate, UCLA',
     email: 'guyunong1998@g.ucla.edu',
-    photo: './images/yunong.jpg',
+    photo: '/images/yunong.jpg',
   },
   {
     name: 'Sophia Ling',
     title: '',
     affiliation: 'M.S Candidate, Columbia University',
     email: 'sl4909@columbia.edu',
-    photo: './images/sophia.jpg',
+    photo: '/images/sophia.jpg',
   },
 ]
 
@@ -87,7 +87,7 @@ export default function AboutPage() {
         <Panel header={<T k="about.schema.title" />}>
           <div className="relative mt-3 aspect-[1941/1065] w-full overflow-hidden rounded border border-brand/15 bg-white">
             <Image
-              src="./images/database_schema.png"
+              src="/images/database_schema.png"
               alt="Database schema / 数据库结构图"
               fill
               sizes="(min-width: 1024px) 768px, 100vw"
@@ -136,7 +136,7 @@ export default function AboutPage() {
               className="flex flex-col items-center gap-2 transition hover:opacity-80"
             >
               <Image
-                src="./images/logos/ans-logo.svg"
+                src="/images/logos/ans-logo.svg"
                 alt="American Numismatic Society"
                 width={96}
                 height={96}

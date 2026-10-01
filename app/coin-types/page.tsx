@@ -76,7 +76,7 @@ export default async function CoinTypesPage() {
           scripts/gen-coin-hierarchy-diagram.py) or as a plain nested tree —
           same {cardNodes.length}-type hierarchy, one card, a toggle between
           the two views. */}
-      <TypologyHierarchyCard nodes={nodes} src="./images/coin-type-hierarchy.png" manifest={typologyManifest} />
+      <TypologyHierarchyCard nodes={nodes} src="/images/coin-type-hierarchy.png" manifest={typologyManifest} />
 
       {/* Searchable list */}
       <div className="mt-8">

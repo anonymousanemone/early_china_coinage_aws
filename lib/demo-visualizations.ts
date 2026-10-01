@@ -66,7 +66,7 @@ export const DEMO_VISUALIZATIONS: DemoVisualization[] = [
       zh: '按币种，对比视图',
       en: 'Coin Type, Compare view',
     },
-    image: './images/home-demos/spade-knife-round-compare.png',
+    image: '/images/home-demos/spade-knife-round-compare.png',
     target: {
       page: 'find-site',
       mode: 'type',
@@ -90,7 +90,7 @@ export const DEMO_VISUALIZATIONS: DemoVisualization[] = [
       zh: '按币种，对比视图',
       en: 'Coin Type, Compare view',
     },
-    image: './images/home-demos/mould-coin-compare.png',
+    image: '/images/home-demos/mould-coin-compare.png',
     target: {
       page: 'find-site',
       mode: 'type',
@@ -109,7 +109,7 @@ export const DEMO_VISUALIZATIONS: DemoVisualization[] = [
       zh: '按币种，密度视图',
       en: 'Coin Type, Density view',
     },
-    image: './images/home-demos/knife-density.png',
+    image: '/images/home-demos/knife-density.png',
     target: { page: 'find-site', mode: 'type', view: 'density', types: [typeSel('钱币', '刀币')] },
   },
   {
@@ -123,7 +123,7 @@ export const DEMO_VISUALIZATIONS: DemoVisualization[] = [
       zh: '铸地视图，点状显示',
       en: 'Mint Town, Points view',
     },
-    image: './images/home-demos/spade-mint-towns.png',
+    image: '/images/home-demos/spade-mint-towns.png',
     target: { page: 'mint-town', view: 'points', types: [typeSel('钱币', '布币')] },
   },
   {
@@ -137,7 +137,7 @@ export const DEMO_VISUALIZATIONS: DemoVisualization[] = [
       zh: '博物馆，对比',
       en: 'Museum, Compare view',
     },
-    image: './images/home-demos/museum-fangzubu-jianzubu.png',
+    image: '/images/home-demos/museum-fangzubu-jianzubu.png',
     target: {
       page: 'museum-collections',
       view: 'compare',
