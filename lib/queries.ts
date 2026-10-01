@@ -1006,6 +1006,24 @@ export async function getMintByCode(mintCode: string): Promise<MintRow | null> {
   return data
 }
 
+/** One row per mint from v_mint_stats (scripts/add-mint-stats-view.sql) —
+ * the same find/coin/site counts and inscriptions computeMintStatsFromFinds
+ * builds, aggregated in Postgres instead of from the full `finds` table. */
+export type MintStatsRow = {
+  mint_id: string
+  mint_code: string
+  find_count: number
+  coin_count: number
+  site_count: number
+  inscriptions: string[]
+}
+
+export async function getMintStats(): Promise<MintStatsRow[]> {
+  return fetchAllPages<MintStatsRow>((from, to) =>
+    supabase.from('v_mint_stats').select('*').order('mint_code').range(from, to)
+  )
+}
+
 /** Minimal shape of a v_coin_finds row scoped to one coin-type node's
  * subtree -- just enough to compute a node's coin/site counts.
  * quantity_for_map is already coalesced server-side

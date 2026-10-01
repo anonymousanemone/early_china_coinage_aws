@@ -5,8 +5,8 @@ import { MapOverviewCard } from '@/components/home/MapOverviewCard'
 import { MapVisCanvas } from '@/components/map/MapVisCanvas'
 import { T } from '@/components/i18n/T'
 import { buildMintDirectory, buildMintTypeLabels, mintCompleteness, toMintInfo } from '@/lib/mint-directory'
-import { computeMintStatsFromFinds, toMintPoints } from '@/lib/mint-stats'
-import { getCoinIssues, getFindsForHeatmap, getImages, getMints } from '@/lib/queries'
+import { computeMintStatsFromView, toMintPoints } from '@/lib/mint-stats'
+import { getCoinIssues, getImages, getMintStats, getMints } from '@/lib/queries'
 
 /**
  * Shared render body for `/mints` (public, `authorized` always false so this
@@ -15,16 +15,17 @@ import { getCoinIssues, getFindsForHeatmap, getImages, getMints } from '@/lib/qu
  */
 export async function MintsPageContent({ authorized }: { authorized: boolean }) {
   // Same points list the Mint Town map visualization shows by default (no
-  // filter, no ANS toggle) — one source of truth so the two look identical.
-  const [dbMints, finds, coinIssues, images] = await Promise.all([
+  // filter, no ANS toggle) — v_mint_stats aggregates the same numbers
+  // computeMintStatsFromFinds would, without pulling the full finds table.
+  const [dbMints, mintStatsRows, coinIssues, images] = await Promise.all([
     getMints(),
-    getFindsForHeatmap(),
+    getMintStats(),
     getCoinIssues(),
     getImages(),
   ])
   const mints = buildMintDirectory(dbMints, images)
 
-  const { mapped, unmapped } = computeMintStatsFromFinds(finds, coinIssues, null, dbMints.map(toMintInfo))
+  const { mapped, unmapped } = computeMintStatsFromView(mintStatsRows, dbMints.map(toMintInfo))
   const mintPoints = toMintPoints(mapped)
 
   // Coin/site counts for the list cards below — covers every documented

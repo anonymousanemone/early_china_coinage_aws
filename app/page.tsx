@@ -10,13 +10,13 @@ import { T } from '@/components/i18n/T'
 // query. Regenerate by re-running the query in the "make no queries" task
 // if coin_type_hierarchy's img_acc_num values change.
 const showcaseItems: Level2TypeShowcaseItem[] = [
-  { slug: 'spade-coin', label_zh: '布币', label_en: 'Spade Coin', obverseSrc: '/images/type_imgs/1937.179.14740.obv.noscale.jpg' },
-  { slug: 'knife-shaped-coin', label_zh: '刀币', label_en: 'Knife-Shaped Coin', obverseSrc: '/images/type_imgs/primitivelargeknife.obv.noscale.jpg' },
-  { slug: 'round-coin', label_zh: '圜钱', label_en: 'Round Coin', obverseSrc: '/images/type_imgs/1937.179.14623.obv.noscale.jpg' },
-  { slug: 'gold-plate', label_zh: '金版', label_en: 'Gold Plate', obverseSrc: '/images/type_imgs/goldplate.obv.noscale.jpg' },
-  { slug: 'gold-cake', label_zh: '金饼', label_en: 'Gold Cake', obverseSrc: '/images/type_imgs/goldcake.obv.noscale.jpg' },
-  { slug: 'horse-hoof-gold', label_zh: '马蹄金', label_en: 'Horse-hoof Gold', obverseSrc: '/images/type_imgs/horsehoofgold.obv.noscale.jpg' },
-  { slug: 'ant-nose-coin', label_zh: '蚁鼻钱', label_en: 'Ant-nose Coin', obverseSrc: '/images/type_imgs/1910.46.2.obv.noscale.jpg' },
+  { slug: 'spade-coin', label_zh: '布币', label_en: 'Spade Coin', obverseSrc: './images/type_imgs/1937.179.14740.obv.noscale.jpg' },
+  { slug: 'knife-shaped-coin', label_zh: '刀币', label_en: 'Knife-Shaped Coin', obverseSrc: './images/type_imgs/primitivelargeknife.obv.noscale.jpg' },
+  { slug: 'round-coin', label_zh: '圜钱', label_en: 'Round Coin', obverseSrc: './images/type_imgs/1937.179.14623.obv.noscale.jpg' },
+  { slug: 'gold-plate', label_zh: '金版', label_en: 'Gold Plate', obverseSrc: './images/type_imgs/goldplate.obv.noscale.jpg' },
+  { slug: 'gold-cake', label_zh: '金饼', label_en: 'Gold Cake', obverseSrc: './images/type_imgs/goldcake.obv.noscale.jpg' },
+  { slug: 'horse-hoof-gold', label_zh: '马蹄金', label_en: 'Horse-hoof Gold', obverseSrc: './images/type_imgs/horsehoofgold.obv.noscale.jpg' },
+  { slug: 'ant-nose-coin', label_zh: '蚁鼻钱', label_en: 'Ant-nose Coin', obverseSrc: './images/type_imgs/1910.46.2.obv.noscale.jpg' },
 ]
 
 export const revalidate = 86400

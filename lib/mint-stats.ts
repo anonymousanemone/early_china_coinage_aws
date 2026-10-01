@@ -7,6 +7,7 @@ import type {
   TypologySelectionEntry,
 } from '@/lib/typology-filter'
 import type { MintPoint } from '@/components/map/MapVisCanvas'
+import type { MintStatsRow } from '@/lib/queries'
 import type { CoinIssueDisplay, CoinTypeHierarchyRow, HeatmapFind, MintInfo } from '@/lib/types'
 
 const LEVEL_KEYS: Array<keyof Pick<TypologyFilterSelection, 'level1' | 'level2' | 'level3' | 'level4' | 'level5'>> = [
@@ -167,6 +168,29 @@ export function computeMintStatsFromFinds(
     ])
   )
   return statsFromGroups(normalized, mints)
+}
+
+/** Unfiltered equivalent of computeMintStatsFromFinds, built from
+ * v_mint_stats rows (already aggregated in Postgres) instead of the full
+ * finds + coin_issues tables — for overview consumers like /mints that never
+ * apply a typology filter. */
+export function computeMintStatsFromView(
+  rows: MintStatsRow[],
+  mints: MintInfo[]
+): { mapped: MintStat[]; unmapped: MintStat[] } {
+  const nameZhById = new Map(mints.map((m) => [m.id, m.name_zh]))
+  const groups = new Map<string, MintStatGroup>()
+  rows.forEach((r) => {
+    const mintZh = nameZhById.get(r.mint_id)
+    if (!mintZh) return
+    groups.set(mintZh, {
+      findCount: r.find_count,
+      coinCount: r.coin_count,
+      siteCount: r.site_count,
+      inscriptions: [...r.inscriptions].sort((a, b) => a.localeCompare(b, 'zh-CN')),
+    })
+  })
+  return statsFromGroups(groups, mints)
 }
 
 /** Reshapes mapped mint stats into the plain `MintPoint[]` MapVisCanvas

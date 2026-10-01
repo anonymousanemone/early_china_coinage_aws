@@ -27,7 +27,7 @@ function listTypeImageFiles(): string[] {
 function findSide(accNum: string, side: 'obv' | 'rev'): string | null {
   const prefix = `${accNum}.${side}`.toLowerCase()
   const file = listTypeImageFiles().find((f) => f.toLowerCase().startsWith(prefix))
-  return file ? `/images/type_imgs/${encodeURIComponent(file)}` : null
+  return file ? `./images/type_imgs/${encodeURIComponent(file)}` : null
 }
 
 /** Some specimens (mostly casting moulds) only have a single representative
@@ -40,7 +40,7 @@ function findBareImage(accNum: string): string | null {
     const fl = f.toLowerCase()
     return fl.startsWith(`${lower}.`) && !fl.startsWith(`${lower}.obv`) && !fl.startsWith(`${lower}.rev`)
   })
-  return file ? `/images/type_imgs/${encodeURIComponent(file)}` : null
+  return file ? `./images/type_imgs/${encodeURIComponent(file)}` : null
 }
 
 /**
@@ -61,7 +61,7 @@ const GENERIC_ICON_BY_SLUG: Record<string, string> = {
 function findGenericIcon(slug: string): string | null {
   const file = GENERIC_ICON_BY_SLUG[slug]
   if (!file || !listTypeImageFiles().includes(file)) return null
-  return `/images/type_imgs/${encodeURIComponent(file)}`
+  return `./images/type_imgs/${encodeURIComponent(file)}`
 }
 
 /**

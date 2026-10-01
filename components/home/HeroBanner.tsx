@@ -21,7 +21,7 @@ export async function HeroBanner() {
           gradient sweep. */}
       <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true">
         <img
-          src="/images/hero-coins.svg"
+          src="./images/hero-coins.svg"
           alt=""
           className="absolute right-0 top-0 h-full w-auto max-w-none"
         />

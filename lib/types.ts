@@ -252,7 +252,7 @@ export type MintInfo = {
 }
 
 export type MintImage = {
-  /** Public asset path, e.g. /images/mints/anyi-plan.png. */
+  /** Public asset path, e.g. ./images/mints/anyi-plan.png. */
   src: string
   caption?: string
   credit?: string
