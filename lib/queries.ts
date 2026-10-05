@@ -762,6 +762,15 @@ export async function getCoinIssuesByHierarchyIds(hierarchyIds: string[]): Promi
   )
 }
 
+/** Scoped counterpart to getCoinIssues -- one mint's own issues (at most a
+ * few dozen) instead of the whole catalog, for the /mints/[mint_code] page's
+ * coin-type label links. */
+export async function getCoinIssuesByMintId(mintId: string): Promise<CoinIssueDisplay[]> {
+  return fetchAllPages<CoinIssueDisplay>((from, to) =>
+    supabase.from('v_coin_issues_flat').select('*').eq('mint_id', mintId).order('coin_type_code').range(from, to)
+  )
+}
+
 /** Wrapped in React's cache() so app/coin-types/[type_code]/page.tsx's
  * generateMetadata and the page component — both called for the same
  * request — share one fetch instead of two (same pattern as getSite). */
