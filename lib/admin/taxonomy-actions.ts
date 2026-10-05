@@ -1,13 +1,59 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import type { getWriteClient } from '@/lib/admin/guard'
 import { beginMutation, insertOrFindExisting } from '@/lib/admin/mutation'
 import { coinTypeHierarchyDescriptionSchema, coinTypeHierarchySchema, inscriptionSchema, stateSchema } from '@/lib/admin/schemas'
 import type { ActionState } from '@/lib/admin/types'
+import { slugify } from '@/lib/format'
 import type { CoinTypeHierarchyRow, Inscription, State } from '@/lib/types'
 
 const HIERARCHY_FIELDS =
-  'id, level1_zh, level1_en, level2_zh, level2_en, level3_zh, level3_en, level4_zh, level4_en, level5_zh, level5_en, img_acc_num, description_zh, description_en'
+  'id, level1_zh, level1_en, level2_zh, level2_en, level3_zh, level3_en, level4_zh, level4_en, level5_zh, level5_en, img_acc_num, description_zh, description_en, type_code'
+
+/** The label this new row's own node would show — its deepest populated
+ * level, English falling back to Chinese — same source buildCoinTypeNodes
+ * reads for slug/label text (lib/coin-type-catalog.ts's zhOf/enOf), not the
+ * separate name_zh/name_en columns. */
+function deepestLevelLabel(parsed: {
+  level1_zh: string | null
+  level1_en: string | null
+  level2_zh: string | null
+  level2_en: string | null
+  level3_zh: string | null
+  level3_en: string | null
+  level4_zh: string | null
+  level4_en: string | null
+  level5_zh: string | null
+  level5_en: string | null
+}): string {
+  const levels = [5, 4, 3, 2, 1] as const
+  for (const n of levels) {
+    const zh = parsed[`level${n}_zh`]
+    if (zh) return parsed[`level${n}_en`] ?? zh
+  }
+  return ''
+}
+
+/** Generates a type_code for a brand-new hierarchy node the same way
+ * lib/coin-type-catalog.ts's buildCoinTypeNodes would derive one on the fly
+ * for a codeless row, then checks it against type_code's own uniqueness —
+ * same pattern as lib/admin/mints-actions.ts's generateMintCode for
+ * mint_code. */
+async function generateTypeCode(
+  db: Awaited<ReturnType<typeof getWriteClient>>,
+  parsed: Parameters<typeof deepestLevelLabel>[0]
+): Promise<string> {
+  const base = slugify(deepestLevelLabel(parsed), 'type')
+  let candidate = base
+  let i = 2
+  for (;;) {
+    const { data } = await db.from('coin_type_hierarchy').select('id').eq('type_code', candidate).maybeSingle()
+    if (!data) return candidate
+    candidate = `${base}-${i}`
+    i += 1
+  }
+}
 
 /** Create-only — used exclusively by TaxonomyCombobox's "+ Add" popup in the
  * coin-issue form. Catches a unique-violation on state_zh (states.state_zh
@@ -25,7 +71,7 @@ export async function createState(_prev: ActionState<State>, formData: FormData)
   )
   if (!result.ok) return result
 
-  revalidatePath('/coin-types/[slug]', 'page')
+  revalidatePath('/coin-types/[type_code]', 'page')
   return { ok: true, data: result.data, message: result.message }
 }
 
@@ -59,7 +105,7 @@ export async function createInscription(
     .single()
   if (error) return { ok: false, formError: error.message }
 
-  revalidatePath('/coin-types/[slug]', 'page')
+  revalidatePath('/coin-types/[type_code]', 'page')
   return { ok: true, data, message: 'Created.' }
 }
 
@@ -72,8 +118,9 @@ export async function createCoinTypeHierarchy(
   if (!begun.ok) return begun.result
   const { db, data: parsed } = begun
 
+  const type_code = await generateTypeCode(db, parsed)
   const result = await insertOrFindExisting<CoinTypeHierarchyRow>(
-    () => db.from('coin_type_hierarchy').insert(parsed).select(HIERARCHY_FIELDS).single(),
+    () => db.from('coin_type_hierarchy').insert({ ...parsed, type_code }).select(HIERARCHY_FIELDS).single(),
     () => {
       // .eq(col, null) doesn't match NULL rows in PostgREST — use .is() for
       // any level that's null so the lookup mirrors the unique constraint.
@@ -88,7 +135,7 @@ export async function createCoinTypeHierarchy(
   )
   if (!result.ok) return result
 
-  revalidatePath('/coin-types/[slug]', 'page')
+  revalidatePath('/coin-types/[type_code]', 'page')
   revalidatePath('/coin-types')
   return { ok: true, data: result.data, message: result.message }
 }
@@ -113,6 +160,6 @@ export async function updateCoinTypeHierarchyDescription(
     .single()
   if (error) return { ok: false, formError: error.message }
 
-  revalidatePath('/coin-types/[slug]', 'page')
+  revalidatePath('/coin-types/[type_code]', 'page')
   return { ok: true, data, message: 'Saved.' }
 }

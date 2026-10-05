@@ -12,32 +12,29 @@ import { T } from '@/components/i18n/T'
 import { LabelHint } from '@/components/ui/LabelHint'
 import { CollapsiblePanel, Panel } from '@/components/ui/Panel'
 import { linkedList } from '@/components/ui/LinkedList'
-import { isAuthorized } from '@/lib/admin/guard'
 import type { DictionaryKey } from '@/lib/i18n/dictionary'
 import { getCoinTypeImagePaths } from '@/lib/coin-images'
 import {
   buildCoinTypeNodes,
   childrenOf,
-  computeCoinTypeCounts,
+  dedupeInscriptions,
+  dedupeMints,
+  dedupeStates,
   getCoinTypeNodeBySlug,
   isMouldNode,
   type CoinTypeLevel,
 } from '@/lib/coin-type-catalog'
 import { findMintByNameZh, toMintInfo } from '@/lib/mint-directory'
 import {
-  getCoinIssues,
+  getCoinFindsByHierarchyIds,
+  getCoinIssuesByHierarchyIds,
   getCoinTypeHierarchy,
-  getFindSpotsMapSites,
-  getFindsForHeatmap,
   getInscriptions,
+  getMapSitesByCodes,
   getMints,
   getStates,
 } from '@/lib/queries'
 import type { ComboOption } from '@/components/edit/TaxonomyCombobox'
-
-type PageProps = {
-  params: Promise<{ slug: string }>
-}
 
 const LEVEL_LABEL_KEY: Record<CoinTypeLevel, DictionaryKey> = {
   level1: 'map.filter.l0',
@@ -47,36 +44,31 @@ const LEVEL_LABEL_KEY: Record<CoinTypeLevel, DictionaryKey> = {
   level5: 'map.filter.l4',
 }
 
-// No generateStaticParams: this page now reads the caller's Supabase session
-// (via isAuthorized(), for the edit UI) on every render, which is a dynamic
-// API and can't be resolved at build time — Next renders each slug on
-// request instead. notFound() below still 404s unknown slugs correctly.
-
-export const revalidate = 86400
-
-export async function generateMetadata({ params }: PageProps) {
-  const { slug } = await params
+/**
+ * Shared render body for both `/coin-types/[type_code]` (public, `authorized`
+ * always false so this never touches `cookies()` and stays ISR-eligible) and
+ * `/coin-types/[type_code]/edit` (checks the real session, redirects back to
+ * the public URL if not an admin). Keeping one copy of the fetch+render logic
+ * means the edit route shows exactly the same page, just with edit affordances
+ * switched on, instead of drifting into a second maintained view.
+ */
+export async function CoinTypeDetailContent({
+  type_code,
+  authorized,
+}: {
+  type_code: string
+  authorized: boolean
+}) {
+  // Tree structure only (labels/slugs/parents/matchedHierarchyIds/imgAccNum/
+  // description) -- none of that depends on coinIssues, so this resolves
+  // node_code -> node without pulling the whole coin-issues catalog first.
   const hierarchyRows = await getCoinTypeHierarchy()
-  const node = getCoinTypeNodeBySlug(buildCoinTypeNodes(hierarchyRows, []), slug)
-  if (!node) return { title: 'Not found / 未找到' }
-  return {
-    title: `${node.label_zh} ${node.label_en} | Coin Types`,
-    description: `${node.label_en} (${node.label_zh}) — typology, related finds, inscriptions, and mints.`,
-  }
-}
-
-export default async function CoinTypeDetailPage({ params }: PageProps) {
-  const { slug } = await params
-
-  const [coinIssues, hierarchyRows, finds, sites] = await Promise.all([
-    getCoinIssues(),
-    getCoinTypeHierarchy(),
-    getFindsForHeatmap(),
-    getFindSpotsMapSites(),
-  ])
-
-  const nodes = buildCoinTypeNodes(hierarchyRows, coinIssues)
-  const node = getCoinTypeNodeBySlug(nodes, slug)
+  const nodes = buildCoinTypeNodes(hierarchyRows, [])
+  // node.slug is sourced straight from this row's own type_code (see
+  // lib/coin-type-catalog.ts buildLevel), so this is a direct match against
+  // the DB-persisted column, not a recomputed value that only coincidentally
+  // agrees with it.
+  const node = getCoinTypeNodeBySlug(nodes, type_code)
   if (!node) notFound()
 
   const { obverseSrc, reverseSrc } = getCoinTypeImagePaths(node.imgAccNum, node.slug)
@@ -88,12 +80,26 @@ export default async function CoinTypeDetailPage({ params }: PageProps) {
   const isGeneralCategory =
     !node.imgAccNum && directSubtypes.length > 0 && (node.level === 'level2' || node.level === 'level3')
 
-  const authorized = await isAuthorized()
-  // mints is also needed to resolve the Mints row's links below (for every
-  // visitor, not just admins) -- states/inscriptions stay admin-only since
-  // they only populate the coin-issue editing comboboxes.
-  const mints = await getMints()
-  const [states, inscriptions] = authorized ? await Promise.all([getStates(), getInscriptions()]) : [[], []]
+  // Every other fetch now scopes directly off node.matchedHierarchyIds
+  // instead of paging the full coin_issues/finds/map-sites tables and
+  // filtering client-side -- coinIssues and coinFinds are independent scoped
+  // queries (v_coin_finds already carries coin_type_id, so finds no longer
+  // has to wait on coinIssues to derive an issue-id list first). mints stays
+  // a full-table fetch (small table, doubles as the admin combobox's full
+  // option list) -- states/inscriptions stay admin-only since they only
+  // populate the coin-issue editing comboboxes.
+  const [coinIssues, coinFinds, mints, [states, inscriptions]] = await Promise.all([
+    getCoinIssuesByHierarchyIds(node.matchedHierarchyIds),
+    getCoinFindsByHierarchyIds(node.matchedHierarchyIds),
+    getMints(),
+    authorized ? Promise.all([getStates(), getInscriptions()]) : Promise.resolve([[], []] as const),
+  ])
+
+  const matchedHierarchyIds = new Set(node.matchedHierarchyIds)
+  const nodeStates = dedupeStates(coinIssues, matchedHierarchyIds)
+  const nodeMints = dedupeMints(coinIssues, matchedHierarchyIds)
+  const nodeInscriptions = dedupeInscriptions(coinIssues, matchedHierarchyIds)
+
   const mintOptions: ComboOption[] = mints.map((m) => ({ value: m.id, label: m.name_zh, searchText: m.name_en ?? '' }))
   const stateOptions: ComboOption[] = states.map((s) => ({ value: s.id, label: s.state_zh, searchText: s.state_en ?? '' }))
   const inscriptionOptions: ComboOption[] = inscriptions.map((i) => ({
@@ -106,37 +112,39 @@ export default async function CoinTypeDetailPage({ params }: PageProps) {
     label: [h.level1_zh, h.level2_zh, h.level3_zh, h.level4_zh, h.level5_zh].filter(Boolean).join(' › '),
   }))
 
-  const hierarchyIdByIssueId = new Map(coinIssues.map((c) => [c.id, c.coin_type_hierarchy_id]))
-  const counts = computeCoinTypeCounts(node.matchedHierarchyIds, finds, hierarchyIdByIssueId)
+  const matchedSiteCodes = new Set<string>()
+  let coinCount = 0
+  coinFinds.forEach((f) => {
+    coinCount += f.quantity_for_map
+    if (f.site_code) matchedSiteCodes.add(f.site_code)
+  })
+  const counts = { coinCount, siteCount: matchedSiteCodes.size }
 
   const mintInfos = mints.map(toMintInfo)
-  const mintEnByZh = new Map(node.mints.map((m) => [m.mint_zh, m.mint_en]))
+  const mintEnByZh = new Map(nodeMints.map((m) => [m.mint_zh, m.mint_en]))
   function resolveMintLink(labelZh: string) {
     const mint = findMintByNameZh(mintInfos, labelZh)
     return { en: mintEnByZh.get(labelZh) ?? null, href: mint ? `/mints/${mint.mint_code}` : null }
   }
 
-  const matchedIds = new Set(node.matchedHierarchyIds)
-  const matchedCoinIssues = coinIssues
-    .filter((c) => c.coin_type_hierarchy_id && matchedIds.has(c.coin_type_hierarchy_id))
-    .sort((a, b) => (a.coin_type_code ?? '').localeCompare(b.coin_type_code ?? ''))
-  const matchedIssueIds = new Set(matchedCoinIssues.map((c) => c.id))
-  const matchedSiteCodes = new Set<string>()
-  finds.forEach((f) => {
-    if (f.coin_issues_id && matchedIssueIds.has(f.coin_issues_id) && f.site_code) {
-      matchedSiteCodes.add(f.site_code)
-    }
-  })
-  const relatedSites = sites
-    .filter((s) => matchedSiteCodes.has(s.site_code))
-    .sort((a, b) => (b.total_quantity_for_map ?? 0) - (a.total_quantity_for_map ?? 0))
+  const matchedCoinIssues = [...coinIssues].sort((a, b) =>
+    (a.coin_type_code ?? '').localeCompare(b.coin_type_code ?? '')
+  )
+  const relatedSites = (await getMapSitesByCodes([...matchedSiteCodes])).sort(
+    (a, b) => (b.total_quantity_for_map ?? 0) - (a.total_quantity_for_map ?? 0)
+  )
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <Link href="/coin-types" className="text-sm text-brand hover:underline">
           <T k="coinTypeDetail.back" />
         </Link>
+        {!authorized && (
+          <Link href={`/coin-types/${type_code}/edit`} className="text-sm text-brand hover:underline">
+            Edit
+          </Link>
+        )}
       </div>
 
       <div className="mb-2 flex items-center gap-2">
@@ -176,8 +184,8 @@ export default async function CoinTypeDetailPage({ params }: PageProps) {
             <DetailRow
               labelKey="coinTypeDetail.row.states"
               value={
-                node.states.length > 0
-                  ? node.states.map((s) => `${s.state_zh} (${s.state_en})`).join('、')
+                nodeStates.length > 0
+                  ? nodeStates.map((s) => `${s.state_zh} (${s.state_en})`).join('、')
                   : '—'
               }
             />
@@ -199,16 +207,16 @@ export default async function CoinTypeDetailPage({ params }: PageProps) {
             <DetailRow
               labelKey="coinTypeDetail.row.mints"
               value={linkedList(
-                node.mints.map((m) => m.mint_zh),
+                nodeMints.map((m) => m.mint_zh),
                 resolveMintLink
               )}
             />
             <DetailRow
               labelKey="mintDetail.row.inscriptions"
               value={
-                node.inscriptions.length > 0 ? (
+                nodeInscriptions.length > 0 ? (
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    {node.inscriptions.map((insc) => (
+                    {nodeInscriptions.map((insc) => (
                       <span key={insc.inscription_zh}>
                         {insc.inscription_zh}
                         {insc.inscription_en && insc.inscription_en !== insc.inscription_zh && (
