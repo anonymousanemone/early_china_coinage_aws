@@ -111,7 +111,7 @@ function toArray(value: string | string[] | undefined): string[] {
 
 export default async function SearchPage({ searchParams }: PageProps) {
   const params = await searchParams
-  // Trim so whitespace-only q doesn't call searchSites([]) and show "no results".
+  // Trim so a whitespace-only q doesn't count as a real search query.
   const q = (params.q ?? '').trim()
   const precision = parsePrecisionFilter(params.precision)
 
@@ -137,8 +137,9 @@ export default async function SearchPage({ searchParams }: PageProps) {
 
   const currentPage = Math.max(1, Number(params.page) || 1)
 
-  // Fetch each catalog once — never call searchSites() here (it re-fetches
-  // both), which previously doubled Supabase work and timed out on Vercel.
+  // Fetch each catalog once — a previous searchSites() helper re-fetched
+  // both, which doubled Supabase work and timed out on Vercel; it had no
+  // callers and was removed. Don't reintroduce that pattern here.
   const [allSites, coinIssues] = await Promise.all([getAllSites(), getCoinIssues()])
   const baseResults = q ? filterSitesByQuery(allSites, coinIssues, q) : allSites
 
@@ -414,8 +415,6 @@ export default async function SearchPage({ searchParams }: PageProps) {
                       city_en: s.city_en,
                       county_zh: s.county_zh,
                       county_en: s.county_en,
-                      location_detail_zh: s.location_detail_zh,
-                      location_detail_en: s.location_detail_en,
                       lat: s.lat,
                       lng: s.lng,
                       precision_level: s.precision_level,
