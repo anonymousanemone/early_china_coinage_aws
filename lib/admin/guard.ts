@@ -8,8 +8,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
  *
  * In production, true only for a signed-in user whose email is in the
  * admin_users table, checked via the is_admin() Postgres function -- the
- * same function every table's INSERT/UPDATE/DELETE RLS policy uses (see
- * scripts/add-admin-write-rls.sql). This app-level check is a fast-fail /
+ * same function every table's INSERT/UPDATE/DELETE RLS policy uses. This app-level check is a fast-fail /
  * UI-gating convenience; the database is the actual enforcement boundary.
  */
 async function isAllowedProdSession(): Promise<boolean> {

@@ -57,7 +57,7 @@ A small, deliberately quiet editing layer sits on top of the otherwise read-only
 **Signing in** (`lib/auth/actions.ts`, `app/login/page.tsx`, `app/auth/callback/route.ts`): Google OAuth (`signInWithOAuth` → redirect → `/auth/callback` exchanges the code for a session) or email/password (`signInWithPassword`), both Supabase Auth. `AuthStatus` (rendered at the bottom of `/about`, nowhere else) shows a quiet "Switch to edit mode" link or, once signed in, "Editing enabled" + Sign out — it fetches `/api/auth/me` client-side rather than making the whole page dynamic just to check a cookie.
 
 **The write path** (`lib/admin/guard.ts`'s `getWriteClient()`):
-- **Production:** the caller's own session-scoped client (`lib/supabase/server.ts`) — Postgres Row Level Security, not app code, is the real enforcement boundary. Every editable table has one `admin_write_insert`/`_update`/`_delete` policy gated by `is_admin()` (`scripts/add-admin-write-rls.sql`, run by hand in the Supabase SQL editor — same one-off convention as the rest of `scripts/*.sql`).
+- **Production:** the caller's own session-scoped client (`lib/supabase/server.ts`) — Postgres Row Level Security, not app code, is the real enforcement boundary. Every editable table has one `admin_write_insert`/`_update`/`_delete` policy gated by `is_admin()` (set up by hand in the Supabase SQL editor).
 - **Dev:** the service-role client (`lib/supabase-admin.ts`, `getSupabaseAdmin()`) if `SUPABASE_SERVICE_ROLE_KEY` is set locally — it bypasses RLS entirely, since dev has no session to be RLS-scoped to. Without that key, dev falls back to a real signed-in admin session if one happens to exist, otherwise throws a setup-instructions error surfaced as a form error (not a raw 500).
 - `assertAuthorized()` — a second, redundant check inside every exported Server Action, ahead of any FormData/db work — exists because a Server Action is just a POST endpoint under the hood; a raw POST to a captured action reference must still hit an authorization check, not rely on the UI never rendering the button.
 
@@ -97,7 +97,7 @@ The core find-provenance chain is `sites` → `contexts` (an archaeological find
 Not every join could move into a view: `getSiteFinds()` and the `finds`-embedding admin actions (`createFind`/`updateFind` in `sites-actions.ts`) still embed `coin_issues(...)` directly via PostgREST's `finds.coin_issues_id → coin_issues.id` foreign key — `v_coin_issues_flat` has no real FK for PostgREST to embed through (it's a view, not a table), so those call sites keep the `COIN_ISSUE_FIELDS` select string + `flattenCoinIssue()` pattern rather than the view.
 
 Two tables still aren't read by the running app at all:
-- `ans_data_upload` (raw import staging) — reconciled by hand into `ans_data` via `scripts/reconcile-ans-data.sql`, run in the Supabase SQL editor whenever new ANS catalogue data comes in. `scripts/append-new-coin-issues.sql` is the same kind of manual, one-off tool.
+- `ans_data_upload` (retired raw import staging for `ans_data`) — left out of the MySQL export by `scripts/pg-to-mysql.py`, along with `ans_data.upload_id`.
 - `admin_users` (collaborator email allow-list, see §3) — never queried directly by the app; only read indirectly through the `is_admin()` `security definer` function, which runs with elevated privilege regardless of the caller's own RLS grants.
 
 ### 4b. Local — bundled into the repo
@@ -106,7 +106,7 @@ Data that either never changes, is small enough to just ship, or is derived once
 
 | What | Where | Source |
 |---|---|---|
-| River overlays for the map base layers | `public/data/rivers-major.geojson`, `rivers-minor.geojson` | `scripts/clip-rivers-to-china.js`, clipped from Natural Earth 1:10m data |
+| River overlays for the map base layers | `public/data/rivers-major.geojson`, `rivers-minor.geojson` | Natural Earth 1:10m data, clipped once by a since-removed script (see git history) |
 | Coin specimen photography | `public/images/type_imgs/` | Static files, matched by filename prefix at request time (`lib/coin-images.ts`) |
 
 Map **tiles** and **city/county boundary polygons** are the one runtime "external" dependency that isn't Supabase: base tiles come from OpenStreetMap / CyclOSM, Esri ArcGIS (satellite + English labels), the Consortium of Ancient World Mappers terrain, and 高德 / AutoNavi (`lib/map-layers.ts`), and precise city/county boundary outlines are fetched live from Nominatim (`lib/city-boundaries.ts`), cached in-memory per session.
@@ -253,7 +253,7 @@ Tailwind CSS 4, configured CSS-first (no `tailwind.config.js` — `@import "tail
 | `leaflet.markercluster` | Marker clustering on `CoinMap.tsx` (search results / site-detail maps, which can have many nearby points) and on `MapVisCanvas.tsx` (Find Site / Mint Town overview markers cluster at national zoom, then uncluster once a type/mint filter narrows the point set) |
 | `@supabase/supabase-js` | The read-side Postgres client (`lib/supabase.ts`) and the dev-only service-role write client (`lib/supabase-admin.ts`) |
 | `@supabase/ssr` | Cookie-aware session clients for auth (`lib/supabase/server.ts`, `lib/supabase/proxy.ts`) — separate from the plain `@supabase/supabase-js` client above, since the anon/service-role clients don't handle browser cookies |
-| `pinyin-pro` | Runtime fallback: generates a romanized English name from Chinese when no curated translation exists (`lib/name-translation.ts`); also used dev-only by `scripts/gen-technical-terms.js` |
+| `pinyin-pro` | Runtime fallback: generates a romanized English name from Chinese when no curated translation exists (`lib/name-translation.ts`) |
 
 No charting/dataviz library is used — the pie chart on site pages (`components/site/CoinTypePieChart.tsx`) is hand-rolled SVG, and every "chart-like" visualization on this site is actually the Leaflet map itself (points/density/compare), styled per the project's own `dataviz`-skill-validated color rules (see `lib/color-scale.ts`'s `SELECTION_COLORS` comment).
 
@@ -263,13 +263,15 @@ No charting/dataviz library is used — the pie chart on site pages (`components
 
 These never run automatically — they're one-off or occasional maintenance steps:
 
-- `scripts/gen-technical-terms.js` — glossary generation
-- `scripts/clip-rivers-to-china.js` — Natural Earth river data → the two river GeoJSON files
-- `scripts/reconcile-ans-data.sql` — rebuilds `public.ans_data` from `public.ans_data_upload` in Supabase (run by hand in the SQL editor)
-- `scripts/append-new-coin-issues.sql` — promotes unresolved `ans_data` rows into new `coin_issues` records
-- `scripts/add-admin-write-rls.sql` — one-time setup for the admin editing layer (§3): creates `admin_users` and `is_admin()`, adds the `admin_write_insert`/`_update`/`_delete` RLS policies to every editable table. Run once by hand; adding a new collaborator afterward is a single manual `insert into admin_users`.
+- `scripts/gen-coin-hierarchy-diagram.py` — regenerates the typology viewer's poster PNG + bbox manifest from `coin_type_hierarchy`
+- `scripts/capture-demo-screenshots.mjs` / `crop-demo-images.mjs` — regenerate / crop the homepage demo carousel images
+- `scripts/convert-routes-shapefile.mjs` / `resnap-route-nodes.mjs` — route shapefiles → `routes.geojson` + `route-nodes.geojson`
+- `scripts/pg-to-mysql.py` — exports the Supabase Postgres database to a MySQL dump
+- `scripts/deploy-ec2.sh` — pulls, builds and restarts the app on EC2
 
-`v_coin_issues_flat` and `v_source_link_targets` (§4a) are a partial exception to the "one-off script checked into the repo" convention above — they were applied directly via the Supabase MCP server's `apply_migration` tool rather than a hand-run `scripts/*.sql` file, so their `CREATE VIEW` definitions live only in Supabase's own migration history (`list_migrations`), not in this repo. Worth keeping in mind if either view ever needs to change: there's no local `.sql` source to edit and re-run.
+Adding a new admin collaborator is a single manual `insert into admin_users`.
+
+`v_coin_issues_flat` and `v_source_link_targets` (§4a) were applied directly via the Supabase MCP server's `apply_migration` tool rather than a hand-run `scripts/*.sql` file, so their `CREATE VIEW` definitions live only in Supabase's own migration history (`list_migrations`), not in this repo. Worth keeping in mind if either view ever needs to change: there's no local `.sql` source to edit and re-run.
 
 ---
 

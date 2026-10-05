@@ -189,8 +189,7 @@ export function toMintPoints(stats: MintStat[]): MintPoint[] {
 }
 
 /**
- * One row per specimen in the reconciled `public.ans_data` table (see
- * scripts/reconcile-ans-data.sql) — mint/state/hierarchy/inscription are
+ * One row per specimen in the reconciled `public.ans_data` table — mint/state/hierarchy/inscription are
  * already resolved per specimen there (mint_id, hierarchy_id, inscription_id
  * FKs), rather than guessed from inscription text. Fetched by
  * lib/ans-museum-data.ts.

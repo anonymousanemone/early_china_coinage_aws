@@ -22,8 +22,8 @@ function one<T>(value: T | T[] | null | undefined): T | null {
 }
 
 /**
- * Every specimen in the reconciled `public.ans_data` table (see
- * scripts/reconcile-ans-data.sql), with mint/state resolved via their FKs.
+ * Every specimen in the reconciled `public.ans_data` table, with mint/state
+ * resolved via their FKs.
  * Powers the Museum Collections page: the mint-town map
  * (lib/mint-stats.ts's computeAnsMintStats) and the accession-number
  * search box both read from this same fetch.
