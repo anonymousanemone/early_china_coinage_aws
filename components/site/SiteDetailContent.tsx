@@ -261,15 +261,19 @@ export async function SiteDetailContent({ site_code, authorized }: { site_code: 
   const site = await getSite(site_code)
   if (!site) notFound()
 
-  const summary = await getSiteMapSummary(site_code)
-  const contexts = await getSiteContexts(site_code)
-  const finds = await getSiteFinds(contexts.map((c) => c.context_code))
-  const mints = await getMintInfos()
-
-  // Only needed to populate the find-editing combobox, so skip the fetch in prod.
-  const coinIssues = authorized ? await getCoinIssues() : []
+  // Independent fetches run together; only finds has to wait on contexts.
+  const contextsPromise = getSiteContexts(site_code)
+  const [summary, contexts, finds, mints, coinIssues, hierarchyRows] = await Promise.all([
+    getSiteMapSummary(site_code),
+    contextsPromise,
+    contextsPromise.then((cs) => getSiteFinds(cs.map((c) => c.context_code))),
+    getMintInfos(),
+    // Only needed to populate the find-editing combobox, so skip the fetch in prod.
+    authorized ? getCoinIssues() : Promise.resolve([]),
+    getCoinTypeHierarchy(),
+  ])
   // For linking "Coin Types" labels below through to their /coin-types page.
-  const catalogNodes = buildCoinTypeNodes(await getCoinTypeHierarchy(), coinIssues)
+  const catalogNodes = buildCoinTypeNodes(hierarchyRows, coinIssues)
 
   const structuredSourceLinks = await getSourceLinksForSite(
     site_code,

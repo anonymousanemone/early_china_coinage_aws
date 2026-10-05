@@ -16,7 +16,7 @@ import { buildCoinTypeNodes, type CoinTypeLevel } from '@/lib/coin-type-catalog'
 import { getCoinTypeImagePaths } from '@/lib/coin-images'
 import { buildMintDirectory, getMintDirectoryEntryBySlug } from '@/lib/mint-directory'
 import {
-  getCoinIssues,
+  getCoinIssuesByMintId,
   getCoinTypeHierarchy,
   getImagesByIds,
   getMintByCode,
@@ -62,13 +62,15 @@ export async function MintDetailContent({ mint_code, authorized }: { mint_code: 
       totalCoinCount: 0,
       siteCount: 0,
     })),
-    getCoinIssues(),
+    getCoinIssuesByMintId(mint.id),
     getCoinTypeHierarchy(),
   ])
 
   // Match each type label shown for this mint to its catalog node (deepest
   // level first) so the label can link/preview through to /coin-types —
-  // labels are unique within a given mint's catalogue in practice.
+  // labels are unique within a given mint's catalogue in practice. Only this
+  // mint's own issues are needed: they're all that can put it in a node's
+  // `mints`.
   const catalogNodes = buildCoinTypeNodes(hierarchyRows, coinIssues)
   const coinTypeHints: MintCoinTypeHint[] = distribution.typeLabels.map(({ zh, en }) => {
     const candidates = catalogNodes
