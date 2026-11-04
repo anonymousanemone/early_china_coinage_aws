@@ -11,7 +11,7 @@ Live pieces at a glance:
 
 ## Getting started
 
-This project requires **Node ≥ 20** (a system default of Node 18 via `nvm` cannot run `next dev` on Next.js 16 — switch versions first, e.g. `nvm use 20`).
+This project targets **Node 22** (matching the server and the Docker image; Next.js 16 needs at least Node 20.9, so a system default of Node 18 via `nvm` cannot run `next dev` — switch versions first with `nvm use`, which reads `.nvmrc`).
 
 ```bash
 npm install
@@ -58,7 +58,7 @@ Next.js 16 (App Router) + React 19 + TypeScript, Tailwind CSS 4, MySQL (via Driz
 
 ## Deployment
 
-Production is one Ubuntu server: MySQL, the app as a systemd service, and Apache in front with HTTPS. [`scripts/setup-full.sh`](scripts/setup-full.sh) sets up a blank server, and [`scripts/redeploy-full.sh`](scripts/redeploy-full.sh) redeploys. The Apache config is [`scripts/apache/coin-app.conf.template`](scripts/apache/coin-app.conf.template).
+Production is one Ubuntu server: MySQL, the app as a systemd service, and Apache in front with HTTPS. [`scripts/setup-full.sh`](scripts/setup-full.sh) sets up a blank server, and [`scripts/redeploy-full.sh`](scripts/redeploy-full.sh) redeploys. The Apache config is [`scripts/apache/chec-app.conf.template`](scripts/apache/chec-app.conf.template).
 
 **Four deploy scripts** in `scripts/`, written to be read and pasted from a line at a time as much as run. Each says at the top what a `git pull` will *not* bring (`.env.production`, the systemd unit, the Apache config, the SQL dump).
 

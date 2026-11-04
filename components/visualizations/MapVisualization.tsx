@@ -1349,6 +1349,7 @@ function MuseumMapOverlay({
   // remount like MapVisualizationOverlay's Mint Town/Find Site routes), so
   // this only ever needs to run once, with no cross-mount guard.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: opens after hydration so it can't mismatch the server HTML (see above)
     if (window.matchMedia('(min-width: 1024px)').matches) setOpen(true)
   }, [])
 

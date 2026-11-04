@@ -35,7 +35,7 @@ sudo mv "$RUN_DIR" "$RUN_DIR.old"
 sudo cp -r "$STANDALONE_DIR" "$RUN_DIR"
 
 echo "== Restart =="
-sudo systemctl restart coin-app
-sudo systemctl status coin-app --no-pager
+sudo systemctl restart chec-app
+sudo systemctl status chec-app --no-pager
 curl -I http://127.0.0.1:3000/     # expect HTTP 200 (use the PORT from .env.production)
-# If it fails: sudo journalctl -u coin-app -n 50 --no-pager
+# If it fails: sudo journalctl -u chec-app -n 50 --no-pager

@@ -73,6 +73,7 @@ export function MapVisualizationOverlay({ children }: { children?: React.ReactNo
   useEffect(() => {
     if (appliedDesktopDefault) return
     appliedDesktopDefault = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: opens after hydration so it can't mismatch the server HTML (see above)
     if (window.matchMedia('(min-width: 1024px)').matches) setOpen(true)
   }, [])
 

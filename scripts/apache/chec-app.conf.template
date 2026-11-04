@@ -32,6 +32,6 @@
     ProxyPass / http://${APP_UPSTREAM}/
     ProxyPassReverse / http://${APP_UPSTREAM}/
 
-    ErrorLog ${APACHE_LOG_DIR}/coin-app-error.log
-    CustomLog ${APACHE_LOG_DIR}/coin-app-access.log combined
+    ErrorLog ${APACHE_LOG_DIR}/chec-app-error.log
+    CustomLog ${APACHE_LOG_DIR}/chec-app-access.log combined
 </VirtualHost>

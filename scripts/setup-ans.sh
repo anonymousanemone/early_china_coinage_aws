@@ -11,7 +11,7 @@ set -euo pipefail
 #     Node heap limit.
 #   - Files live under /usr/local/projects/chec, not in $HOME.
 #
-# Needs already installed: git, Node 20+, npm, curl, sudo. Check with:
+# Needs already installed: git, Node 22, npm, curl, sudo. Check with:
 #   node -v
 #
 # Before running, in the RDS database (as its owner, once):
@@ -22,7 +22,7 @@ set -euo pipefail
 #
 # NOT in git, so a pull never brings or changes them (recreate by hand):
 #   - .env.production        written below; holds every secret
-#   - /etc/systemd/system/coin-app.service    written below
+#   - /etc/systemd/system/chec-app.service    written below
 #   - the Apache proxy for chec.numismatics.org (ANS runs Apache)
 #   - pg_export/mysql_dump.sql
 
@@ -93,7 +93,7 @@ sudo cp -r "$STANDALONE_DIR" "$RUN_DIR"
 echo "== systemd service =="
 # HOSTNAME=127.0.0.1: only Apache on this machine can reach the app, not the
 # network. The unit reads the same .env.production.
-sudo tee /etc/systemd/system/coin-app.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/chec-app.service > /dev/null <<EOF
 [Unit]
 Description=Early China Coinage Next.js app
 After=network.target
@@ -113,8 +113,8 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl enable --now coin-app
-sudo systemctl status coin-app --no-pager
+sudo systemctl enable --now chec-app
+sudo systemctl status chec-app --no-pager
 curl -I http://127.0.0.1:$PORT/     # expect HTTP 200
 
 echo "== Still to do by hand =="
@@ -123,7 +123,7 @@ echo "== Still to do by hand =="
 #    (the first is needed: the login rate limit trusts that header):
 #        RequestHeader unset X-Forwarded-For early
 #        RequestHeader set X-Forwarded-Proto "https"
-#    A complete example: scripts/apache/coin-app.conf.template
+#    A complete example: scripts/apache/chec-app.conf.template
 #
 # 2. Create each editor's login (prompts for a password; the email must also
 #    be in ADMIN_EMAILS):

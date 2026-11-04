@@ -125,7 +125,7 @@ cp -r .next/static "$STANDALONE_DIR/.next/"
 echo "== systemd service =="
 # HOSTNAME=127.0.0.1: the app only accepts connections from Apache on this
 # machine, never directly from the internet.
-sudo tee /etc/systemd/system/coin-app.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/chec-app.service > /dev/null <<EOF
 [Unit]
 Description=Early China Coinage Next.js app
 After=network.target mysql.service
@@ -146,9 +146,9 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable coin-app
-sudo systemctl start coin-app
-sudo systemctl status coin-app --no-pager
+sudo systemctl enable chec-app
+sudo systemctl start chec-app
+sudo systemctl status chec-app --no-pager
 
 echo "== HTTPS certificate (Let's Encrypt) =="
 # Apache's stock site serves /var/www/html on port 80, which is all the
@@ -163,10 +163,10 @@ sudo a2enmod ssl proxy proxy_http headers rewrite
 SERVER_NAME="$SERVER_NAME" APP_UPSTREAM=127.0.0.1:3000 \
   SSL_CERT="/etc/letsencrypt/live/$SERVER_NAME/fullchain.pem" \
   SSL_KEY="/etc/letsencrypt/live/$SERVER_NAME/privkey.pem" \
-  envsubst '${SERVER_NAME} ${APP_UPSTREAM} ${SSL_CERT} ${SSL_KEY}' < scripts/apache/coin-app.conf.template \
-  | sudo tee /etc/apache2/sites-available/coin-app.conf > /dev/null
+  envsubst '${SERVER_NAME} ${APP_UPSTREAM} ${SSL_CERT} ${SSL_KEY}' < scripts/apache/chec-app.conf.template \
+  | sudo tee /etc/apache2/sites-available/chec-app.conf > /dev/null
 
-sudo a2ensite coin-app.conf
+sudo a2ensite chec-app.conf
 sudo a2dissite 000-default.conf
 sudo apache2ctl configtest
 sudo systemctl reload apache2
