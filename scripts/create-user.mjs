@@ -2,7 +2,7 @@
 /**
  * Creates (or resets the password of) an email/password login for the edit UI.
  * Public sign-up is disabled in lib/auth/auth.ts, so this is the only way to
- * add an account; it needs DATABASE_URL, i.e. database credentials.
+ * add an account; it needs DATABASE_URL_ADMIN, i.e. database credentials.
  * The account can only edit if its email is also in ADMIN_EMAILS.
  *
  *   node --env-file=.env.local scripts/create-user.mjs <email> [name]
@@ -38,9 +38,9 @@ if (!email) {
   process.exit(1)
 }
 
-const uri = process.env.DATABASE_URL?.trim()
+const uri = process.env.DATABASE_URL_ADMIN?.trim()
 if (!uri) {
-  console.error('Missing DATABASE_URL.')
+  console.error('Missing DATABASE_URL_ADMIN.')
   process.exit(1)
 }
 

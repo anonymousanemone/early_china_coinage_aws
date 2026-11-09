@@ -88,8 +88,8 @@ SQL
 
 echo "== App settings (.env.production) =="
 # Every variable the app reads in production:
-# DATABASE_URL            read/write login: edits and sign-in.
-# DATABASE_URL_READONLY   read-only login: every page's reads. Required.
+# DATABASE_URL_ADMIN      read/write login: edits and sign-in.
+# DATABASE_URL_USER       read-only login: every page's reads. Required.
 # BETTER_AUTH_SECRET      signs login sessions; generated, never typed.
 # BETTER_AUTH_URL         the site's public address, https.
 # ADMIN_EMAILS            only these signed-in accounts can edit.
@@ -101,8 +101,8 @@ read -r -p "Admin email(s), comma-separated: " ADMIN_EMAILS
 mkdir -p "$APP_DIR/logs"
 # Generated here so the secrets are never typed or pasted anywhere.
 ( umask 077 && cat > .env.production <<EOF
-DATABASE_URL=mysql://coinapp:$APP_DB_PASSWORD@127.0.0.1:3306/$DB_NAME
-DATABASE_URL_READONLY=mysql://coinapp_ro:$APP_RO_DB_PASSWORD@127.0.0.1:3306/$DB_NAME
+DATABASE_URL_ADMIN=mysql://coinapp:$APP_DB_PASSWORD@127.0.0.1:3306/$DB_NAME
+DATABASE_URL_USER=mysql://coinapp_ro:$APP_RO_DB_PASSWORD@127.0.0.1:3306/$DB_NAME
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
 BETTER_AUTH_URL=https://$SERVER_NAME
 ADMIN_EMAILS=$ADMIN_EMAILS

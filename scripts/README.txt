@@ -9,14 +9,17 @@ before committing:
     git restore --source=HEAD --staged --worktree -- scripts/
     git commit
 
-Files in this repository (git ls-files, 2026-10-05):
+Files in this repository (git ls-files, 2026-11-09):
 
+    .dockerignore
+    .github/workflows/ci.yml
     .gitignore
+    .nvmrc
     CLAUDE.md
     README.md
     app/about/page.tsx
+    app/api/auth/[...all]/route.ts
     app/api/auth/me/route.ts
-    app/auth/callback/route.ts
     app/coin-types/[type_code]/edit/page.tsx
     app/coin-types/[type_code]/page.tsx
     app/coin-types/page.tsx
@@ -127,14 +130,22 @@ Files in this repository (git ls-files, 2026-10-05):
     components/visualizations/MapVisualization.tsx
     components/visualizations/MapVisualizationOverlay.tsx
     components/visualizations/TypologyFilterBar.tsx
+    docker-compose.prod.yml
     docker-compose.yml
+    docker/apache/Dockerfile
+    docker/app/Dockerfile
+    docker/app/start.sh
     docker/mysql/Dockerfile
+    docker/mysql/create-app-user.sh
+    docker/prod.env.example
     docs/DATA_VISUALIZATION_CALCULATIONS.md
     eslint.config.mjs
     lib/admin/coin-issues-actions.ts
+    lib/admin/deletion-log.ts
     lib/admin/guard.ts
     lib/admin/mints-actions.ts
     lib/admin/mutation.ts
+    lib/admin/resolve-source-link-target-action.ts
     lib/admin/resolve-source-link-target.ts
     lib/admin/schemas.ts
     lib/admin/sites-actions.ts
@@ -146,6 +157,8 @@ Files in this repository (git ls-files, 2026-10-05):
     lib/admin/types.ts
     lib/ans-museum-data.ts
     lib/auth/actions.ts
+    lib/auth/auth.ts
+    lib/auth/client.ts
     lib/auth/session.ts
     lib/city-boundaries.ts
     lib/coin-images.ts
@@ -170,10 +183,6 @@ Files in this repository (git ls-files, 2026-10-05):
     lib/queries.ts
     lib/search-filters.ts
     lib/state-colors.ts
-    lib/supabase-admin.ts
-    lib/supabase.ts
-    lib/supabase/proxy.ts
-    lib/supabase/server.ts
     lib/types.ts
     lib/typology-filter.ts
     lib/typology-manifest.ts
@@ -182,7 +191,6 @@ Files in this repository (git ls-files, 2026-10-05):
     package-lock.json
     package.json
     postcss.config.mjs
-    proxy.ts
     public/coin.svg
     public/data/coin-type-hierarchy.json
     public/data/rivers-major.geojson
@@ -329,10 +337,16 @@ Files in this repository (git ls-files, 2026-10-05):
     public/vercel.svg
     public/window.svg
     scripts/README.txt
-    scripts/deploy-ec2.sh
+    scripts/apache/chec-app.conf.template
+    scripts/better-auth-schema.sql
+    scripts/check-counts.mjs
+    scripts/create-user.mjs
     scripts/pg-to-mysql.py
     scripts/redeploy-ans.sh
-    scripts/setup-ec2.sh
+    scripts/redeploy-full.sh
+    scripts/schema.sql
+    scripts/setup-ans.sh
+    scripts/setup-full.sh
     skills-lock.json
     tsconfig.json
     types/leaflet-heat-augment.d.ts

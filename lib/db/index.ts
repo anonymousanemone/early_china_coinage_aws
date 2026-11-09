@@ -6,12 +6,12 @@ import * as schema from '@/lib/db/schema'
 /**
  * Two MySQL connection pools, so a flaw in a public read path can't write:
  *
- * - `db` / `pool` (DATABASE_URL): the read/write user. lib/admin/*'s writes
+ * - `db` / `pool` (DATABASE_URL_ADMIN): the read/write user. lib/admin/*'s writes
  *   and Better Auth's user/session tables (lib/auth/auth.ts) use it. MySQL has
  *   no row-level security, so nothing at the database layer stops a write
  *   from it — every Server Action must call assertAuthorized()
  *   (lib/admin/guard.ts) first.
- * - `readDb` (DATABASE_URL_READONLY): a user granted SELECT only, for every
+ * - `readDb` (DATABASE_URL_USER): a user granted SELECT only, for every
  *   page's reads (lib/queries.ts and the other read-only helpers). Required:
  *   there is deliberately no fallback to the read/write user, so a missing
  *   variable fails loudly instead of quietly running reads with write access.
@@ -38,11 +38,11 @@ function createAppPool(envVar: string): Pool {
 }
 
 function getPool() {
-  return (globalForDb.mysqlPool ??= createAppPool('DATABASE_URL'))
+  return (globalForDb.mysqlPool ??= createAppPool('DATABASE_URL_ADMIN'))
 }
 
 function getReadPool() {
-  return (globalForDb.mysqlReadPool ??= createAppPool('DATABASE_URL_READONLY'))
+  return (globalForDb.mysqlReadPool ??= createAppPool('DATABASE_URL_USER'))
 }
 
 export const pool = getPool()

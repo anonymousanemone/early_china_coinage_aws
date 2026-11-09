@@ -5,7 +5,7 @@
  *
  *   node scripts/check-counts.mjs
  *
- * Uses DATABASE_URL from the environment, else from .env.local; if neither has
+ * Uses DATABASE_URL_USER from the environment, else from .env.local; if neither has
  * it, the mysql:// URL is prompted for (hidden), so an owner/admin URL never
  * has to go into a file or shell history. The session is set READ ONLY, so the
  * server itself rejects any write, and the password is never printed.
@@ -30,20 +30,20 @@ function promptHidden(question) {
   })
 }
 
-/** DATABASE_URL from .env.local, read by hand so this works on any Node version. */
+/** DATABASE_URL_USER from .env.local, read by hand so this works on any Node version. */
 function urlFromEnvLocal() {
   if (!existsSync('.env.local')) return undefined
   const line = readFileSync('.env.local', 'utf8')
     .split(/\r?\n/)
     .reverse() // the last assignment wins, as with dotenv
-    .find((l) => /^\s*DATABASE_URL\s*=/.test(l))
-  return line?.replace(/^\s*DATABASE_URL\s*=\s*/, '').trim().replace(/^(['"])(.*)\1$/, '$2')
+    .find((l) => /^\s*DATABASE_URL_USER\s*=/.test(l))
+  return line?.replace(/^\s*DATABASE_URL_USER\s*=\s*/, '').trim().replace(/^(['"])(.*)\1$/, '$2')
 }
 
-let uri = process.env.DATABASE_URL?.trim()
+let uri = process.env.DATABASE_URL_USER?.trim()
 if (!uri) {
   uri = urlFromEnvLocal()
-  if (uri) console.log('Using DATABASE_URL from .env.local')
+  if (uri) console.log('Using DATABASE_URL_USER from .env.local')
 }
 if (!uri) uri = (await promptHidden('Database URL (mysql://user:password@host:port/db): ')).trim()
 if (!uri) {

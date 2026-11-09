@@ -37,8 +37,8 @@ services:
       context: .
       dockerfile: docker/app/Dockerfile
     environment:
-      DATABASE_URL: mysql://coinapp:${APP_DB_PASSWORD}@mysql:3306/early_china_coinage
-      DATABASE_URL_READONLY: mysql://coinapp_ro:${APP_RO_DB_PASSWORD}@mysql:3306/early_china_coinage
+      DATABASE_URL_ADMIN: mysql://coinapp:${APP_DB_PASSWORD}@mysql:3306/early_china_coinage
+      DATABASE_URL_USER: mysql://coinapp_ro:${APP_RO_DB_PASSWORD}@mysql:3306/early_china_coinage
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set in .env.prod}
       BETTER_AUTH_URL: https://localhost
       ADMIN_EMAILS: ${ADMIN_EMAILS:?set in .env.prod}

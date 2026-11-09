@@ -21,7 +21,7 @@ git pull --ff-only origin main
 echo "== Rebuild =="
 npm ci
 # Optional: confirm the read-only login still works before building.
-# DATABASE_URL="$(grep '^DATABASE_URL_READONLY=' .env.production | cut -d= -f2-)" node scripts/check-counts.mjs
+# DATABASE_URL_USER="$(grep '^DATABASE_URL_USER=' .env.production | cut -d= -f2-)" node scripts/check-counts.mjs
 npm run build        # reads .env.production by itself
 
 echo "== Put the build in place =="
@@ -33,6 +33,8 @@ cp -r .next/static "$STANDALONE_DIR/.next/"
 sudo rm -rf "$RUN_DIR.old"
 sudo mv "$RUN_DIR" "$RUN_DIR.old"
 sudo cp -r "$STANDALONE_DIR" "$RUN_DIR"
+# The service writes its page and image caches under $RUN_DIR/.next.
+sudo chown -R "$(systemctl show -p User --value chec-app)" "$RUN_DIR"
 
 echo "== Restart =="
 sudo systemctl restart chec-app

@@ -1,0 +1,55 @@
+# Checks every PR and every push to main: lint, typecheck, and a production
+# build against an empty MySQL (schema only, no rows). It uses dummy secrets and
+# never touches the real database, so no credentials are stored in GitHub.
+# Deploying to the ANS server is separate and manual: scripts/redeploy-ans.sh.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_DATABASE: ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=5s
+          --health-retries=20
+    env:
+      # `next build` prerenders pages from the database, and lib/db refuses to
+      # start without both URLs.
+      DATABASE_URL_ADMIN: mysql://root@127.0.0.1:3306/ci
+      DATABASE_URL_USER: mysql://root@127.0.0.1:3306/ci
+      BETTER_AUTH_SECRET: ci-dummy-not-a-secret
+      BETTER_AUTH_URL: http://localhost
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - name: Create the empty database structure
+        run: |
+          mysql -h 127.0.0.1 -u root ci < scripts/schema.sql
+          mysql -h 127.0.0.1 -u root ci < scripts/better-auth-schema.sql
+      - run: npm run build

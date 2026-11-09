@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# coin-app has been renamed to chec-app
+# sudo systemctl disable --now coin-app
+# sudo rm /etc/systemd/system/coin-app.service
+
+
 # One-time setup of the app on the ANS server (numismatics.org). A reference
 # more than a script: you'll usually paste these lines in one at a time.
 #
@@ -44,8 +49,8 @@ cd "$APP_DIR"
 echo "== .env.production =="
 # Every variable the app reads in production. Fill in the CHANGE_ME values.
 #
-# DATABASE_URL            read/write login: edits and sign-in.
-# DATABASE_URL_READONLY   read-only login: every page's reads. Required, and
+# DATABASE_URL_ADMIN      read/write login: edits and sign-in.
+# DATABASE_URL_USER       read-only login: every page's reads. Required, and
 #                         it must be a different login from the one above.
 #                         URL-encode special characters in a password that
 #                         are @ / : # ? (for example @ becomes %40).
@@ -62,8 +67,8 @@ echo "== .env.production =="
 #                         MAPBOX_TOKEN is optional: without it the Mapbox map
 #                         layer is not offered.
 ( umask 077 && cat > .env.production <<EOF
-DATABASE_URL=mysql://CHANGE_ME_RW_USER:CHANGE_ME_PASSWORD@CHANGE_ME_RDS_HOST:3306/CHANGE_ME_DATABASE
-DATABASE_URL_READONLY=mysql://CHANGE_ME_RO_USER:CHANGE_ME_PASSWORD@CHANGE_ME_RDS_HOST:3306/CHANGE_ME_DATABASE
+DATABASE_URL_ADMIN=mysql://CHANGE_ME_RW_USER:CHANGE_ME_PASSWORD@CHANGE_ME_RDS_HOST:3306/CHANGE_ME_DATABASE
+DATABASE_URL_USER=mysql://CHANGE_ME_RO_USER:CHANGE_ME_PASSWORD@CHANGE_ME_RDS_HOST:3306/CHANGE_ME_DATABASE
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
 BETTER_AUTH_URL=https://$SERVER_NAME
 ADMIN_EMAILS=CHANGE_ME@example.com,CHANGE_ME_TOO@example.com
@@ -79,8 +84,8 @@ echo "== Install, check the database, build =="
 npm ci
 # Read-only check of each login (prints row counts). The build also reads the
 # database, so find out now if a login or the RDS firewall is wrong.
-for var in DATABASE_URL_READONLY DATABASE_URL; do
-  DATABASE_URL="$(grep "^$var=" .env.production | cut -d= -f2-)" node scripts/check-counts.mjs
+for var in DATABASE_URL_USER DATABASE_URL_ADMIN; do
+  DATABASE_URL_USER="$(grep "^$var=" .env.production | cut -d= -f2-)" node scripts/check-counts.mjs
 done
 npm run build        # reads .env.production by itself
 
@@ -89,6 +94,8 @@ STANDALONE_DIR=$(dirname "$(find .next/standalone -name server.js -not -path '*/
 cp -r public "$STANDALONE_DIR/"
 cp -r .next/static "$STANDALONE_DIR/.next/"
 sudo cp -r "$STANDALONE_DIR" "$RUN_DIR"
+# The service writes its page and image caches under $RUN_DIR/.next.
+sudo chown -R "$SERVICE_USER" "$RUN_DIR"
 
 echo "== systemd service =="
 # HOSTNAME=127.0.0.1: only Apache on this machine can reach the app, not the
