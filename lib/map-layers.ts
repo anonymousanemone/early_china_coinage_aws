@@ -1,11 +1,27 @@
 /**
  * Shared tile layer definitions for all Leaflet maps.
  */
+import L from 'leaflet'
 import { toEnglishName } from '@/lib/name-translation'
 // https://github.com/ghybs/Leaflet.TileLayer.Fallback
 import 'leaflet.tilelayer.fallback'
 
 type LeafletNS = typeof import('leaflet')
+
+// Leaflet 1.9.4 bug: an animated zoom schedules _onZoomTransitionEnd on a
+// 250ms setTimeout that map.remove() never cancels, so removing a map
+// mid-zoom (a re-render rebuilding it) throws "Cannot read properties of
+// undefined (reading '_leaflet_pos')". Skip the callback once the map's
+// panes are gone. Patched here because every map component loads this module.
+const mapProto = L.Map.prototype as unknown as {
+  _mapPane?: HTMLElement
+  _onZoomTransitionEnd: () => void
+}
+const onZoomTransitionEnd = mapProto._onZoomTransitionEnd
+mapProto._onZoomTransitionEnd = function (this: typeof mapProto) {
+  if (!this._mapPane) return
+  onZoomTransitionEnd.call(this)
+}
 
 /**
  * River network (Natural Earth 1:10m, ranked by relative importance).
