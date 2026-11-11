@@ -11,7 +11,7 @@ set -euo pipefail
 # changed by a pull: .env.production, the systemd unit and the Apache proxy.
 
 PROJECT_DIR=/usr/local/projects/chec
-APP_DIR=$PROJECT_DIR/early_china_coinage_aws
+APP_DIR=/usr/local/projects/early_china_coinage_aws
 RUN_DIR=$PROJECT_DIR/standalone
 
 echo "== Pull latest =="

@@ -14,7 +14,8 @@ set -euo pipefail
 #   - Apache and HTTPS are run by ANS, so no Apache, certbot or certificate.
 #   - The server has plenty of memory and disk, so no swap file and no
 #     Node heap limit.
-#   - Files live under /usr/local/projects/chec, not in $HOME.
+#   - Files live under /usr/local/projects, not in $HOME: the code in
+#     early_china_coinage_aws, the running build and logs in chec.
 #
 # Needs already installed: git, Node 22, npm, curl, sudo. Check with:
 #   node -v
@@ -33,7 +34,7 @@ set -euo pipefail
 
 SERVER_NAME=chec.numismatics.org
 PROJECT_DIR=/usr/local/projects/chec
-APP_DIR=$PROJECT_DIR/early_china_coinage_aws   # the git checkout
+APP_DIR=/usr/local/projects/early_china_coinage_aws   # the git checkout
 RUN_DIR=$PROJECT_DIR/standalone                # the built server the service runs
 LOG_DIR=$PROJECT_DIR/logs
 SERVICE_USER=$USER                             # CHECK: the account the service should run as
