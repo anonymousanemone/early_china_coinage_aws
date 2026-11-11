@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# coin-app has been renamed to chec-app
+# coin-app has been renamed to chec
 # sudo systemctl disable --now coin-app
 # sudo rm /etc/systemd/system/coin-app.service
 
@@ -28,7 +28,7 @@ set -euo pipefail
 #
 # NOT in git, so a pull never brings or changes them (recreate by hand):
 #   - .env.production        written below; holds every secret
-#   - /etc/systemd/system/chec-app.service    written below
+#   - /etc/systemd/system/chec.service    written below
 #   - the Apache proxy for chec.numismatics.org (ANS runs Apache)
 #   - pg_export/mysql_dump.sql
 
@@ -38,7 +38,8 @@ APP_DIR=/usr/local/projects/early_china_coinage_aws   # the git checkout
 RUN_DIR=$PROJECT_DIR/standalone                # the built server the service runs
 LOG_DIR=$PROJECT_DIR/logs
 SERVICE_USER=$USER                             # CHECK: the account the service should run as
-PORT=3000                                      # CHECK: free on this server? (ss -ltn | grep 3000)
+PORT=3000       
+mkdir $LOG_DIR                               # CHECK: free on this server? (ss -ltn | grep 3000)
 
 echo "== Folders and code =="
 sudo mkdir -p "$APP_DIR" "$LOG_DIR"
@@ -92,16 +93,21 @@ npm run build        # reads .env.production by itself
 
 echo "== Put the build in place =="
 STANDALONE_DIR=$(dirname "$(find .next/standalone -name server.js -not -path '*/node_modules/*' | head -1)")
+echo $STANDALONE_DIR
 cp -r public "$STANDALONE_DIR/"
 cp -r .next/static "$STANDALONE_DIR/.next/"
-sudo cp -r "$STANDALONE_DIR" "$RUN_DIR"
+
+PROJECT_DIR=/usr/local/projects/chec
+RUN_DIR=$PROJECT_DIR/standalone     
+cp -r "$STANDALONE_DIR" "$RUN_DIR"
+
 # The service writes its page and image caches under $RUN_DIR/.next.
 sudo chown -R "$SERVICE_USER" "$RUN_DIR"
 
 echo "== systemd service =="
 # HOSTNAME=127.0.0.1: only Apache on this machine can reach the app, not the
 # network. The unit reads the same .env.production.
-sudo tee /etc/systemd/system/chec-app.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/chec.service > /dev/null <<EOF
 [Unit]
 Description=Early China Coinage Next.js app
 After=network.target
@@ -121,8 +127,8 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl enable --now chec-app
-sudo systemctl status chec-app --no-pager
+sudo systemctl enable --now chec
+sudo systemctl status chec --no-pager
 curl -I http://127.0.0.1:$PORT/     # expect HTTP 200
 
 echo "== Still to do by hand =="

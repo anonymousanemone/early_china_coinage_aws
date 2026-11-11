@@ -1,0 +1,73 @@
+# Apache vhost for the app, modelled on the ANS server's
+# chec.numismatics.org.conf. Used by scripts/setup-full.sh (the EC2 box) and
+# docker/apache (the local production copy, docker-compose.prod.yml); on the
+# ANS server, the same lines go in the ANS-run Apache config by hand.
+# Filled in with: envsubst '${SERVER_NAME} ${APP_UPSTREAM} ${SSL_CERT} ${SSL_KEY}'
+# Needs: mod_ssl, mod_proxy, mod_proxy_http, mod_headers, mod_rewrite.
+#
+# The app is a Node server (the chec service), not files: every request is
+# proxied to it. DocumentRoot must never be the app folder, or a broken
+# ProxyPass would serve the server code as downloads.
+
+# Plain HTTP only redirects to HTTPS, except Let's Encrypt's challenge files,
+# served from /var/www/html so certificate renewal never needs this file changed.
+<VirtualHost *:80>
+    ServerName ${SERVER_NAME}
+    ServerAdmin systems@numismatics.org
+    DocumentRoot /var/www/html
+
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
+    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,NE,R=permanent]
+
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName ${SERVER_NAME}
+    ServerAdmin systems@numismatics.org
+    DocumentRoot /var/www/html
+    LimitRequestLine 1000000
+
+    SSLEngine on
+    SSLCertificateFile ${SSL_CERT}
+    SSLCertificateKeyFile ${SSL_KEY}
+
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set Access-Control-Allow-Origin "*"
+
+    # Crawlers ANS blocks on all its sites.
+    SetEnvIfNoCase User-Agent "^MJ12bot" badbot
+    SetEnvIfNoCase User-Agent "^AhrefsBot" badbot
+    SetEnvIfNoCase User-Agent "^Ezooms" badbot
+    SetEnvIfNoCase User-Agent "^Semrush" badbot
+    SetEnvIfNoCase User-Agent "^Pi-Monster" badbot
+    SetEnvIfNoCase User-Agent "^BLEX" badbot
+    # <Location>, not <Directory>: proxied requests never touch a directory.
+    <Location />
+        <RequireAll>
+            Require all granted
+            Require not env badbot
+        </RequireAll>
+    </Location>
+
+    # The shared ANS robots.txt, served by Apache; everything else goes to the
+    # app. The ! exclusion must come before ProxyPass /.
+    Alias /robots.txt /var/www/numismatics.org/robots.txt
+    ProxyPass /robots.txt !
+
+    ProxyRequests Off
+    ProxyPreserveHost On
+    # mod_proxy appends the client's IP to any X-Forwarded-For the client sent
+    # itself; drop that first so the header holds only the real IP. Better
+    # Auth's login rate limit is keyed on it.
+    RequestHeader unset X-Forwarded-For early
+    RequestHeader set X-Forwarded-Proto "https"
+    ProxyPass / http://${APP_UPSTREAM}/
+    ProxyPassReverse / http://${APP_UPSTREAM}/
+
+    LogLevel warn
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>

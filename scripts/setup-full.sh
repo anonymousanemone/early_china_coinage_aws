@@ -1,34 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One-time setup of a blank Ubuntu server (e.g. a small EC2 instance): MySQL,
-# the app (systemd), Apache with HTTPS, all on the one machine.
-# docker-compose.prod.yml is a local copy of this same setup. A reference more
-# than a script: you can paste the lines in one at a time. For the ANS server
-# (database on RDS, Apache run by ANS) use setup-ans.sh instead.
+# One-time setup of a blank Ubuntu server (e.g. a small EC2 instance): the app
+# (systemd) and Apache with HTTPS, using the live RDS database through an SSH
+# tunnel via numismatics.org. The instance can't reach RDS itself;
+# numismatics.org can. A reference more than a script: you can paste the
+# lines in one at a time. For the ANS server (reaches RDS directly, Apache run
+# by ANS) use setup-ans.sh instead.
 #
-#   ./setup-full.sh <public-ip-or-domain> [path/to/mysql_dump.sql]
+#   ./setup-full.sh <public-ip-or-domain>
 #
 # Because the box is small, it gets a 2GB swap file and the build is capped
 # at 896MB of Node memory so it doesn't run out of RAM; the ANS server needs
 # neither.
 #
 # NOT in git, so a pull never brings or changes them (recreate by hand):
-#   .env.production, the systemd unit, the Apache site, the MySQL logins and
-#   the dump (pg_export/mysql_dump.sql).
+#   .env.production, the tunnel key, the systemd units and the Apache site.
 #
 # Without a domain, pass the server's public IP: it's turned into an
 # <ip-with-dashes>.sslip.io hostname (sslip.io resolves it back to the IP),
 # which Let's Encrypt will issue a real certificate for.
 # Before running: the Security Group must allow 22 (SSH), 80 and 443 — and
-# nothing else. The dump (pg_export/mysql_dump.sql, not in git) can be copied
-# up first with scp; without it the database starts empty.
+# nothing else.
+#
+# The app will write to the LIVE database.
 
 REPO_URL="https://github.com/anonymousanemone/early_china_coinage_aws.git"
 APP_DIR="$HOME/early_china_coinage_aws"
-TARGET="${1:?Usage: $0 <public-ip-or-domain> [path/to/mysql_dump.sql]}"
-DUMP="${2:-}"
-DB_NAME=early_china_coinage
+TARGET="${1:?Usage: $0 <public-ip-or-domain>}"
+RDS_HOST="<host>"
+JUMP_HOST="numismatics.org"
+JUMP_PORT="<port>"
+JUMP_USER="<user>"
 
 if [[ "$TARGET" =~ ^[0-9]+(\.[0-9]+){3}$ ]]; then
   SERVER_NAME="${TARGET//./-}.sslip.io"
@@ -39,7 +42,7 @@ echo "Site will be https://$SERVER_NAME"
 
 echo "== System packages =="
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y apache2 mysql-server certbot gettext-base git curl build-essential cloud-guest-utils
+sudo apt install -y apache2 certbot gettext-base git curl build-essential cloud-guest-utils
 
 echo "== Node 22 =="
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
@@ -60,31 +63,37 @@ echo "== Clone app =="
 git clone "$REPO_URL" "$APP_DIR"
 cd "$APP_DIR"
 
-echo "== MySQL =="
-# Ubuntu's MySQL listens on 127.0.0.1 only and root logs in via `sudo mysql`
-# (no password, local only) — check the former rather than assume it.
-if ! sudo grep -Eq '^\s*bind-address\s*=\s*127\.0\.0\.1' /etc/mysql/mysql.conf.d/mysqld.cnf; then
-  echo "MySQL is not bound to 127.0.0.1 — fix bind-address in /etc/mysql/mysql.conf.d/mysqld.cnf first." >&2
-  exit 1
-fi
-sudo mysql -e "CREATE DATABASE $DB_NAME"
-if [[ -n "$DUMP" ]]; then
-  sudo mysql "$DB_NAME" < "$DUMP"
-else
-  echo "No dump given — load it later with: sudo mysql $DB_NAME < mysql_dump.sql"
-fi
-sudo mysql "$DB_NAME" < scripts/better-auth-schema.sql
+echo "== Tunnel to RDS =="
+# No passphrase, so the tunnel service can start on its own. ssh-copy-id asks
+# for <user>'s numismatics.org password once and authorizes the key there.
+ssh-keygen -t ed25519 -f ~/.ssh/chec_tunnel -N "" -C "chec-test-ec2-tunnel"
+ssh-keyscan -p "$JUMP_PORT" "$JUMP_HOST" >> ~/.ssh/known_hosts
+ssh-copy-id -i ~/.ssh/chec_tunnel.pub -p "$JUMP_PORT" "$JUMP_USER@$JUMP_HOST"
 
-# The app's own logins: one that reads/writes rows in this one database, and
-# one that can only read (used for every page's reads), nothing else.
-APP_DB_PASSWORD=$(openssl rand -hex 24)
-APP_RO_DB_PASSWORD=$(openssl rand -hex 24)
-sudo mysql <<SQL
-CREATE USER 'coinapp'@'localhost' IDENTIFIED BY '$APP_DB_PASSWORD';
-GRANT SELECT, INSERT, UPDATE, DELETE ON \`$DB_NAME\`.* TO 'coinapp'@'localhost';
-CREATE USER 'coinapp_ro'@'localhost' IDENTIFIED BY '$APP_RO_DB_PASSWORD';
-GRANT SELECT ON \`$DB_NAME\`.* TO 'coinapp_ro'@'localhost';
-SQL
+# Nothing else on this box uses 3306, so the tunnel's local end takes it.
+sudo tee /etc/systemd/system/chec-tunnel.service > /dev/null <<EOF
+[Unit]
+Description=SSH tunnel to RDS via $JUMP_HOST
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$USER
+ExecStart=/usr/bin/ssh -i $HOME/.ssh/chec_tunnel -p $JUMP_PORT -N \\
+  -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \\
+  -L 127.0.0.1:3306:$RDS_HOST:3306 \\
+  $JUMP_USER@$JUMP_HOST
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now chec-tunnel
+sleep 3
+timeout 5 bash -c "</dev/tcp/127.0.0.1/3306" && echo TUNNEL_OK
+# If not: sudo journalctl -u chec-tunnel -n 50 --no-pager
 
 echo "== App settings (.env.production) =="
 # Every variable the app reads in production:
@@ -97,12 +106,13 @@ echo "== App settings (.env.production) =="
 # NEXT_PUBLIC_*           baked into the pages at BUILD time, so changing them
 #                         needs a rebuild (redeploy-full.sh). MAPBOX_TOKEN is
 #                         optional: without it the Mapbox map layer is not offered.
+# The RDS logins are the same as in .env.prod, with the host swapped for the
+# tunnel's 127.0.0.1.
 read -r -p "Admin email(s), comma-separated: " ADMIN_EMAILS
 mkdir -p "$APP_DIR/logs"
-# Generated here so the secrets are never typed or pasted anywhere.
 ( umask 077 && cat > .env.production <<EOF
-DATABASE_URL_ADMIN=mysql://coinapp:$APP_DB_PASSWORD@127.0.0.1:3306/$DB_NAME
-DATABASE_URL_USER=mysql://coinapp_ro:$APP_RO_DB_PASSWORD@127.0.0.1:3306/$DB_NAME
+DATABASE_URL_ADMIN=mysql://CHANGE_ME_RW_USER:CHANGE_ME_PASSWORD@127.0.0.1:3306/chec
+DATABASE_URL_USER=mysql://CHANGE_ME_RO_USER:CHANGE_ME_PASSWORD@127.0.0.1:3306/chec
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
 BETTER_AUTH_URL=https://$SERVER_NAME
 ADMIN_EMAILS=$ADMIN_EMAILS
@@ -111,9 +121,15 @@ NEXT_PUBLIC_SITE_URL=https://$SERVER_NAME
 NEXT_PUBLIC_MAPBOX_TOKEN=
 EOF
 )
+${EDITOR:-nano} .env.production     # fill in the CHANGE_ME values, then save
 
-echo "== Install + build =="
+echo "== Install, check the database, build =="
 npm ci
+# Read-only check of each login (prints row counts). The build also reads the
+# database, so find out now if a login or the tunnel is wrong.
+for var in DATABASE_URL_USER DATABASE_URL_ADMIN; do
+  DATABASE_URL_USER="$(grep "^$var=" .env.production | cut -d= -f2-)" node scripts/check-counts.mjs
+done
 NODE_OPTIONS="--max-old-space-size=896" npm run build
 
 STANDALONE_DIR=$(dirname "$(find .next/standalone -name server.js -not -path '*/node_modules/*' | head -1)")
@@ -128,7 +144,8 @@ echo "== systemd service =="
 sudo tee /etc/systemd/system/chec-app.service > /dev/null <<EOF
 [Unit]
 Description=Early China Coinage Next.js app
-After=network.target mysql.service
+After=network.target chec-tunnel.service
+Wants=chec-tunnel.service
 
 [Service]
 Type=simple
@@ -172,6 +189,7 @@ sudo apache2ctl configtest
 sudo systemctl reload apache2
 
 echo "== Done =="
-echo "Create each editor's login (prompts for the password):"
+echo "Your existing login works if it is already in the RDS database; otherwise"
+echo "create each editor's login (prompts for the password):"
 echo "  cd $APP_DIR && node --env-file=.env.production scripts/create-user.mjs <email>"
 echo "Then visit https://$SERVER_NAME"

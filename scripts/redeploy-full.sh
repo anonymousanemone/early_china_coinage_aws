@@ -18,8 +18,7 @@ RDS_HOST="<host>"
 JUMP_HOST="numismatics.org"
 JUMP_PORT="<port>"
 JUMP_USER="<user>"
-# 3307, not 3306: setup-full.sh installs a local MySQL on 3306.
-TUNNEL_PORT=3307
+TUNNEL_PORT=3306
 APP_DIR="$HOME/early_china_coinage_aws"
 
 echo "== 1. Tunnel key (EC2) =="

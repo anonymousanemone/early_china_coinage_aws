@@ -26,18 +26,16 @@ npm run build        # reads .env.production by itself
 
 echo "== Put the build in place =="
 STANDALONE_DIR=$(dirname "$(find .next/standalone -name server.js -not -path '*/node_modules/*' | head -1)")
+echo $STANDALONE_DIR
 cp -r public "$STANDALONE_DIR/"
 cp -r .next/static "$STANDALONE_DIR/.next/"
-# The previous build stays as standalone.old; to roll back, swap the two
-# folders back and restart.
-sudo rm -rf "$RUN_DIR.old"
-sudo mv "$RUN_DIR" "$RUN_DIR.old"
+sudo rm -rf "$RUN_DIR"
 sudo cp -r "$STANDALONE_DIR" "$RUN_DIR"
 # The service writes its page and image caches under $RUN_DIR/.next.
-sudo chown -R "$(systemctl show -p User --value chec-app)" "$RUN_DIR"
+sudo chown -R "$(systemctl show -p User --value chec)" "$RUN_DIR"
 
 echo "== Restart =="
-sudo systemctl restart chec-app
-sudo systemctl status chec-app --no-pager
+sudo systemctl restart chec
+sudo systemctl status chec --no-pager
 curl -I http://127.0.0.1:3000/     # expect HTTP 200 (use the PORT from .env.production)
-# If it fails: sudo journalctl -u chec-app -n 50 --no-pager
+# If it fails: sudo journalctl -u chec -n 50 --no-pager
